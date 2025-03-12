@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Daire Arka Plan -->
+  <circle cx="256" cy="256" r="248" fill="#4CAF50" stroke="#388E3C" stroke-width="16"/>
+  
+  <!-- Çatal ve Kaşık -->
+  <g transform="translate(128, 96)" fill="#FFFFFF">
+    <!-- Çatal -->
+    <path d="M64 0h16v128h-16zM32 0h16v64h-16zM96 0h16v64h-16z"/>
+    <!-- Kaşık -->
+    <path d="M192 0C192 0 224 32 224 64C224 96 192 128 192 128V320H160V128C160 128 128 96 128 64C128 32 160 0 160 0H192z"/>
+  </g>
+  
+  <!-- Yaprak -->
+  <path d="M256 96C192 96 144 144 144 208C144 272 192 320 256 320" stroke="#FFFFFF" stroke-width="32" stroke-linecap="round"/>
+</svg>
