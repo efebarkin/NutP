@@ -1,5 +1,4 @@
 import { createClient } from 'redis';
-import { promisify } from 'util';
 
 // Redis istemcisini oluştur
 const redisClient = createClient({
