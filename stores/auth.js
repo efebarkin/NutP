@@ -25,7 +25,7 @@ export const useAuthStore = defineStore('auth', {
           if (userJson) {
             // Geçerli bir JSON olup olmadığını kontrol et
             const user = JSON.parse(userJson);
-            if (user && user.token) {
+            if (user && user._id) {
               return true;
             }
           }
@@ -39,6 +39,102 @@ export const useAuthStore = defineStore('auth', {
       return false;
     },
     isInitialized: (state) => state.initialized,
+    // Token getter'ı ekle - token'a kolay erişim için
+    token: (state) => {
+      // Loglama ekleyelim
+      console.log('Token getter çağrıldı, state.user:', state.user ? 'mevcut' : 'yok');
+      
+      if (state.user?.token) {
+        console.log('Token state.user.token\'dan alındı');
+        return state.user.token;
+      }
+      
+      // localStorage'dan token'ı almayı dene
+      if (process.client) {
+        try {
+          const userJson = localStorage.getItem('user');
+          console.log('localStorage user:', userJson ? 'mevcut' : 'yok');
+          
+          if (userJson) {
+            const user = JSON.parse(userJson);
+            if (user && user.token) {
+              console.log('Token localStorage\'dan alındı');
+              return user.token;
+            }
+          }
+        } catch (e) {
+          console.error('Error getting token from localStorage:', e);
+        }
+      }
+      
+      // Cookie'den token'ı almayı dene
+      if (process.client) {
+        try {
+          const cookies = document.cookie.split(';');
+          for (const cookie of cookies) {
+            const [name, value] = cookie.trim().split('=');
+            if (name === 'auth_token') {
+              console.log('Token cookie\'den alındı');
+              return decodeURIComponent(value);
+            }
+          }
+          // Mevcut tüm cookie'leri logla
+          console.log('Mevcut cookies:', document.cookie);
+        } catch (e) {
+          console.error('Error getting token from cookie:', e);
+        }
+      }
+      
+      console.log('Token bulunamadı, null dönüyor');
+      return null;
+    },
+    // Kullanıcı ID'si getter'ı
+    userId: (state) => {
+      // Loglama ekleyelim
+      console.log('userId getter çağrıldı, state.user:', state.user ? 'mevcut' : 'yok');
+      
+      if (state.user) {
+        // Önce _id alanını kontrol et
+        if (state.user._id) {
+          console.log('userId state.user._id\'den alındı:', state.user._id);
+          return state.user._id;
+        }
+        
+        // Sonra id alanını kontrol et
+        if (state.user.id) {
+          console.log('userId state.user.id\'den alındı:', state.user.id);
+          return state.user.id;
+        }
+      }
+      
+      // localStorage'dan ID'yi almayı dene
+      if (process.client) {
+        try {
+          const userJson = localStorage.getItem('user');
+          console.log('localStorage user:', userJson ? 'mevcut' : 'yok');
+          
+          if (userJson) {
+            const user = JSON.parse(userJson);
+            // Önce _id alanını kontrol et
+            if (user && user._id) {
+              console.log('userId localStorage\'dan (_id) alındı:', user._id);
+              return user._id;
+            }
+            
+            // Sonra id alanını kontrol et
+            if (user && user.id) {
+              console.log('userId localStorage\'dan (id) alındı:', user.id);
+              return user.id;
+            }
+          }
+        } catch (e) {
+          console.error('Error getting userId from localStorage:', e);
+        }
+      }
+      
+      console.log('userId bulunamadı, null dönüyor');
+      return null;
+    }
   },
 
   actions: {
@@ -47,16 +143,26 @@ export const useAuthStore = defineStore('auth', {
 
       try {
         this.loading = true;
+        console.log('Auth store initialize başladı');
 
         // Önce localStorage'dan kullanıcı bilgisini kontrol et
         if (process.client) {
           const userJson = localStorage.getItem('user');
+          console.log('localStorage user kontrolü:', userJson ? 'mevcut' : 'yok');
+          
           if (userJson) {
             try {
               const user = JSON.parse(userJson);
-              this.setUser(user);
-              // Periyodik token kontrolü başlat
-              this.startTokenRefreshTimer();
+              console.log('localStorage\'dan user parse edildi:', user._id ? 'ID mevcut' : 'ID yok');
+              
+              if (user && user._id) {
+                this.setUser(user);
+                // Periyodik token kontrolü başlat
+                this.startTokenRefreshTimer();
+                console.log('localStorage\'dan kullanıcı yüklendi, ID:', user._id);
+              } else {
+                console.warn('localStorage\'daki user objesinde _id alanı yok');
+              }
             } catch (e) {
               console.error('Error parsing user from localStorage:', e);
               localStorage.removeItem('user');
@@ -65,6 +171,7 @@ export const useAuthStore = defineStore('auth', {
         }
 
         // Sonra API'den session kontrolü yap
+        console.log('API\'den session kontrolü yapılıyor');
         await this.checkSession();
 
         this.setupGlobalErrorHandler();
@@ -74,6 +181,14 @@ export const useAuthStore = defineStore('auth', {
       } finally {
         this.initialized = true;
         this.loading = false;
+        console.log('Auth store initialize tamamlandı, user:', this.user ? 'mevcut' : 'yok');
+        
+        if (this.user) {
+          console.log('User bilgileri:', {
+            id: this.user._id,
+            hasToken: !!this.user.token
+          });
+        }
       }
     },
 
@@ -252,13 +367,18 @@ export const useAuthStore = defineStore('auth', {
     },
 
     setUser(user) {
+      if (!user) return;
+      
+      console.log('setUser çağrıldı, user:', JSON.stringify(user));
+      
+      // Kullanıcı bilgisini state'e kaydet
       this.user = user;
-      this.error = null;
-
-      // User bilgisini localStorage'a kaydet
-      if (process.client && user) {
+      
+      // localStorage'a kaydet
+      if (process.client) {
         try {
           localStorage.setItem('user', JSON.stringify(user));
+          console.log('User localStorage\'a kaydedildi, _id:', user._id);
         } catch (e) {
           console.error('Error saving user to localStorage:', e);
         }
@@ -284,8 +404,9 @@ export const useAuthStore = defineStore('auth', {
     },
 
     getAuthHeader() {
+      const token = this.token;
       return {
-        Authorization: this.user ? `Bearer ${this.user.token}` : '',
+        Authorization: token ? `Bearer ${token}` : ''
       };
     },
     setupGlobalErrorHandler() {

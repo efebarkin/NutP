@@ -9,6 +9,7 @@ export default defineNuxtConfig({
     '@pinia/nuxt',
     '@vueuse/nuxt',
   ],
+  // @ts-ignore - Pinia yapılandırması için TypeScript hatası görmezden gelinecek
   pinia: {
     autoImports: ['defineStore', 'acceptHMRUpdate'],
   },
@@ -51,6 +52,7 @@ export default defineNuxtConfig({
     },
     routeRules: {
       '/**': { isr: true },
+      '/socket.io/**': { proxy: '' }
     },
   },
   $development: {
@@ -58,6 +60,9 @@ export default defineNuxtConfig({
       head: {
         title: 'DEV',
       },
+    },
+    routeRules: {
+      '/socket.io/**': { proxy: '' }
     },
   },
   $env: {

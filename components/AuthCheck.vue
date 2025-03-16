@@ -32,9 +32,12 @@ const authenticated = ref(false);
 
 onMounted(() => {
   // Check if token exists in localStorage but not in store
-  if (!authStore.token && localStorage.getItem('token')) {
-    authStore.token = localStorage.getItem('token');
-    authStore.authenticated = true;
+  if (!authStore.user?.token && localStorage.getItem('token')) {
+    // Token'ı doğrudan authStore.token'a atamak yerine
+    // authStore.setUser() metodunu kullanmak daha doğru olacaktır
+    // Ancak bu değişiklik daha kapsamlı olacağından şimdilik
+    // authStore.initialize() çağrısı yaparak mevcut kodu koruyoruz
+    authStore.initialize();
   }
 
   authenticated.value = authStore.authenticated;

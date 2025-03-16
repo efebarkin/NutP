@@ -75,13 +75,28 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: '/images/default-avatar.png'
   },
+  status: {
+    type: String,
+    enum: ['online', 'offline', 'away', 'busy', 'invisible'],
+    default: 'offline'
+  },
+  lastActive: {
+    type: Date,
+    default: Date.now
+  },
   lastSeen: {
     type: Date,
     default: Date.now
   },
-  isOnline: {
-    type: Boolean,
-    default: false
+  device: {
+    type: String,
+    enum: ['web', 'mobile', 'desktop'],
+    default: 'web'
+  },
+  customStatus: {
+    type: String,
+    maxlength: 100,
+    default: ''
   },
   socketId: {
     type: String,
@@ -137,28 +152,11 @@ userSchema.methods.toJSON = function() {
   return userObject;
 };
 
-// Indexes
-userSchema.index({ 'weeklyPlan.monday.breakfast': 1 });
-userSchema.index({ 'weeklyPlan.monday.lunch': 1 });
-userSchema.index({ 'weeklyPlan.monday.dinner': 1 });
-userSchema.index({ 'weeklyPlan.tuesday.breakfast': 1 });
-userSchema.index({ 'weeklyPlan.tuesday.lunch': 1 });
-userSchema.index({ 'weeklyPlan.tuesday.dinner': 1 });
-userSchema.index({ 'weeklyPlan.wednesday.breakfast': 1 });
-userSchema.index({ 'weeklyPlan.wednesday.lunch': 1 });
-userSchema.index({ 'weeklyPlan.wednesday.dinner': 1 });
-userSchema.index({ 'weeklyPlan.thursday.breakfast': 1 });
-userSchema.index({ 'weeklyPlan.thursday.lunch': 1 });
-userSchema.index({ 'weeklyPlan.thursday.dinner': 1 });
-userSchema.index({ 'weeklyPlan.friday.breakfast': 1 });
-userSchema.index({ 'weeklyPlan.friday.lunch': 1 });
-userSchema.index({ 'weeklyPlan.friday.dinner': 1 });
-userSchema.index({ 'weeklyPlan.saturday.breakfast': 1 });
-userSchema.index({ 'weeklyPlan.saturday.lunch': 1 });
-userSchema.index({ 'weeklyPlan.saturday.dinner': 1 });
-userSchema.index({ 'weeklyPlan.sunday.breakfast': 1 });
-userSchema.index({ 'weeklyPlan.sunday.lunch': 1 });
-userSchema.index({ 'weeklyPlan.sunday.dinner': 1 });
+// Sadece şunları bırakabilirsiniz:
+userSchema.index({ unique: true });
+userSchema.index({ isAdmin: 1 });
+userSchema.index({ 'friends': 1 });
+userSchema.index({ 'conversations': 1 });
 
 // Model zaten varsa kullan, yoksa oluştur
 export const User = mongoose.models.User || mongoose.model('User', userSchema);

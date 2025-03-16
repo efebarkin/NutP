@@ -99,6 +99,8 @@ import { useDebounceFn } from '@vueuse/core';
 const authStore = useAuthStore();
 const { socket, connected } = useSocketClient();
 
+const emit = defineEmits(['friend-added']);
+
 const searchQuery = ref('');
 const searchResults = ref([]);
 const searching = ref(false);
@@ -126,19 +128,47 @@ const handleSearch = useDebounceFn(async () => {
   error.value = '';
 
   try {
+    console.log('Kullanıcı araması başlatılıyor:', searchQuery.value);
+    
     // Try socket first
-    if (socket.value && connected.value) {
+    if (connected.value) {
+      console.log('Socket ile kullanıcı araması yapılıyor...');
+      
       socket.value.emit('search_users', { query: searchQuery.value }, response => {
+        console.log('Socket arama yanıtı:', response);
+        
         searching.value = false;
 
         if (response && response.success) {
-          searchResults.value = response.data;
+          // Kullanıcı verilerini kontrol et ve düzelt
+          searchResults.value = (response.data || []).map(user => {
+            // Eksik alanları kontrol et
+            if (!user.name) user.name = 'İsimsiz Kullanıcı';
+            if (!user.email) user.email = 'E-posta yok';
+            
+            // Arkadaşlık durumunu kontrol et
+            if (user.friendshipStatus === undefined) {
+              user.isFriend = false;
+              user.isPending = false;
+              user.isBlocked = false;
+            } else {
+              user.isFriend = user.friendshipStatus === 'friend';
+              user.isPending = user.friendshipStatus === 'pending';
+              user.isBlocked = user.friendshipStatus === 'blocked';
+            }
+            
+            return user;
+          });
+          
+          console.log('İşlenmiş arama sonuçları:', searchResults.value);
         } else {
+          console.error('Socket arama hatası:', response?.error);
           // Socket başarısız olursa REST API'ye düş
           fetchUsersFromAPI();
         }
       });
     } else {
+      console.log('Socket bağlantısı yok, REST API ile kullanıcı araması yapılıyor...');
       // Socket bağlantısı yoksa REST API'ye düş
       fetchUsersFromAPI();
     }
@@ -153,15 +183,40 @@ const handleSearch = useDebounceFn(async () => {
 // REST API'den kullanıcıları getir
 const fetchUsersFromAPI = async () => {
   try {
+    console.log('REST API ile kullanıcı araması yapılıyor...');
+    
     const response = await fetch(`/api/users/search?q=${encodeURIComponent(searchQuery.value)}`, {
       headers: authStore.getAuthHeader(),
     });
 
     if (response.ok) {
       const data = await response.json();
-      searchResults.value = data.users || [];
+      
+      // Kullanıcı verilerini kontrol et ve düzelt
+      searchResults.value = (data.users || []).map(user => {
+        // Eksik alanları kontrol et
+        if (!user.name) user.name = 'İsimsiz Kullanıcı';
+        if (!user.email) user.email = 'E-posta yok';
+        
+        // Arkadaşlık durumunu kontrol et
+        if (user.friendshipStatus === undefined) {
+          user.isFriend = false;
+          user.isPending = false;
+          user.isBlocked = false;
+        } else {
+          user.isFriend = user.friendshipStatus === 'friend';
+          user.isPending = user.friendshipStatus === 'pending';
+          user.isBlocked = user.friendshipStatus === 'blocked';
+        }
+        
+        return user;
+      });
+      
+      console.log('REST API arama sonuçları:', searchResults.value);
     } else {
       console.error(`API error: ${response.status}`);
+      const errorText = await response.text();
+      console.error('Hata detayı:', errorText);
       searchResults.value = [];
       error.value = 'Kullanıcılar aranamadı';
     }
@@ -180,22 +235,41 @@ const addFriend = async friendId => {
   error.value = '';
 
   try {
+    console.log('Arkadaş ekleme işlemi başlatılıyor:', friendId);
+    
     // Try socket first
-    if (socket.value && connected.value) {
-      socket.value.emit('add_friend', { friendId }, response => {
-        if (response.success) {
-          // Update the user in search results
-          const userIndex = searchResults.value.findIndex(u => u._id === friendId);
-          if (userIndex !== -1) {
-            searchResults.value[userIndex].isPending = true;
-            searchResults.value[userIndex].friendshipStatus = 'pending';
+    if (connected.value) {
+      console.log('Socket ile arkadaş ekleme isteği gönderiliyor...');
+      
+      return new Promise((resolve) => {
+        socket.value.emit('add_friend', { friendId }, response => {
+          console.log('Socket arkadaş ekleme yanıtı:', response);
+          
+          if (response && response.success) {
+            // Update the user in search results
+            const userIndex = searchResults.value.findIndex(u => u._id === friendId);
+            if (userIndex !== -1) {
+              searchResults.value[userIndex].isPending = true;
+              searchResults.value[userIndex].friendshipStatus = 'pending';
+              searchResults.value[userIndex].isFriend = false;
+            }
+            
+            // Emit event to parent component
+            emit('friend-added');
+            
+            console.log('Arkadaş ekleme başarılı, arama sonuçları güncellendi');
+          } else {
+            console.error('Socket arkadaş ekleme hatası:', response?.error);
+            error.value = response?.error || 'Arkadaş eklenemedi';
           }
-        } else {
-          throw new Error(response.error || 'Arkadaş eklenemedi');
-        }
-        addingFriend.value = null;
+          
+          addingFriend.value = null;
+          resolve();
+        });
       });
     } else {
+      console.log('Socket bağlantısı yok, REST API ile arkadaş ekleme yapılıyor...');
+      
       // Fallback to REST API
       const response = await fetch(`/api/users/friends/${friendId}`, {
         method: 'POST',
@@ -205,8 +279,11 @@ const addFriend = async friendId => {
         },
       });
 
+      const responseData = await response.json();
+      console.log('REST API arkadaş ekleme yanıtı:', responseData);
+
       if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+        throw new Error(responseData.message || `API error: ${response.status}`);
       }
 
       // Update the user in search results
@@ -214,8 +291,13 @@ const addFriend = async friendId => {
       if (userIndex !== -1) {
         searchResults.value[userIndex].isPending = true;
         searchResults.value[userIndex].friendshipStatus = 'pending';
+        searchResults.value[userIndex].isFriend = false;
       }
 
+      // Emit event to parent component
+      emit('friend-added');
+      
+      console.log('REST API ile arkadaş ekleme başarılı');
       addingFriend.value = null;
     }
   } catch (err) {

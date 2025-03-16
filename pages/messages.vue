@@ -290,9 +290,8 @@ const setupSocketListeners = () => {
 // Sayfa yüklendiğinde
 onMounted(async () => {
   // Initialize auth store if needed
-  if (!authStore.token && localStorage.getItem('token')) {
-    authStore.token = localStorage.getItem('token');
-    authStore.authenticated = true;
+  if (!authStore.user?.token && localStorage.getItem('token')) {
+    authStore.initialize();
   }
 
   // Kullanıcı giriş yapmış mı kontrol et

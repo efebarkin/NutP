@@ -6,6 +6,7 @@ import {
   getCachedMessages,
   setTypingStatus,
   getTypingStatus,
+  TTL,
 } from '../utils/redis.js';
 
 /**
@@ -21,6 +22,14 @@ const messageService = {
     try {
       // Önce MongoDB'ye kaydet
       const message = new Message(messageData);
+
+      // İlk durum güncellemesini ekle
+      message.statusUpdates.push({
+        status: 'sent',
+        timestamp: new Date(),
+        updatedBy: message.sender,
+      });
+
       await message.save();
 
       // Sonra Redis'e önbelleğe al
@@ -31,19 +40,29 @@ const messageService = {
         content: message.content,
         conversationId: message.conversationId,
         createdAt: message.createdAt,
-        read: message.read,
+        status: message.status,
         attachments: message.attachments || [],
+        messageType: message.messageType,
+        replyTo: message.replyTo,
       });
 
       // Konuşmayı güncelle
-      await Conversation.findOneAndUpdate(
-        { _id: message.conversationId },
-        {
-          lastMessage: message._id,
-          $inc: { [`unreadCount.${message.receiver}`]: 1 },
-        },
-        { new: true },
-      );
+      const conversation = await Conversation.findById(message.conversationId);
+      if (conversation) {
+        // Son mesaj önizlemesini güncelle
+        await conversation.updateLastMessagePreview(message);
+
+        // Okunmamış mesaj sayısını artır
+        const unreadCount =
+          conversation.unreadCount.get(message.receiver.toString()) || 0;
+        conversation.unreadCount.set(
+          message.receiver.toString(),
+          unreadCount + 1,
+        );
+        conversation.markModified('unreadCount');
+
+        await conversation.save();
+      }
 
       return message;
     } catch (error) {
@@ -77,7 +96,8 @@ const messageService = {
         .skip(skip)
         .limit(limit)
         .populate('sender', 'name avatar')
-        .populate('receiver', 'name avatar');
+        .populate('receiver', 'name avatar')
+        .populate('replyTo', 'content sender');
 
       // Mesajları Redis'e önbelleğe al
       for (const message of messages) {
@@ -88,8 +108,10 @@ const messageService = {
           content: message.content,
           conversationId: message.conversationId,
           createdAt: message.createdAt,
-          read: message.read,
+          status: message.status,
           attachments: message.attachments || [],
+          messageType: message.messageType,
+          replyTo: message.replyTo,
         });
       }
 
@@ -103,34 +125,42 @@ const messageService = {
   /**
    * Mesajı okundu olarak işaretler
    * @param {String} messageId - Mesaj ID'si
+   * @param {String} userId - Okuyan kullanıcı ID'si
    * @returns {Promise<Object>} - Güncellenen mesaj
    */
-  async markAsRead(messageId) {
+  async markAsRead(messageId, userId) {
     try {
-      const message = await Message.findByIdAndUpdate(
-        messageId,
-        { read: true, readAt: new Date() },
-        { new: true },
-      );
+      const message = await Message.findById(messageId);
 
       if (!message) {
         throw new Error('Mesaj bulunamadı');
       }
+
+      // Mesaj zaten okunmuşsa işlem yapma
+      if (
+        message.status === 'read' &&
+        message.readBy.some((r) => r.user.toString() === userId)
+      ) {
+        return message;
+      }
+
+      // Mesaj durumunu güncelle
+      await message.updateStatus('read', userId);
 
       // Redis'teki mesajı güncelle
       const cachedMessages = await getCachedMessages(message.conversationId);
       const messageIndex = cachedMessages.findIndex((m) => m._id === messageId);
 
       if (messageIndex !== -1) {
-        cachedMessages[messageIndex].read = true;
-        cachedMessages[messageIndex].readAt = new Date();
+        cachedMessages[messageIndex].status = 'read';
         await cacheMessage(cachedMessages[messageIndex]);
       }
 
       // Konuşmadaki okunmamış mesaj sayısını güncelle
-      await Conversation.findByIdAndUpdate(message.conversationId, {
-        $set: { [`unreadCount.${message.receiver}`]: 0 },
-      });
+      const conversation = await Conversation.findById(message.conversationId);
+      if (conversation) {
+        await conversation.resetUnreadCount(userId);
+      }
 
       return message;
     } catch (error) {
@@ -147,24 +177,30 @@ const messageService = {
    */
   async markAllAsRead(userId, conversationId) {
     try {
-      // MongoDB'deki mesajları güncelle
-      await Message.updateMany(
-        { conversationId, receiver: userId, read: false },
-        { read: true, readAt: new Date() },
-      );
+      // MongoDB'deki mesajları bul
+      const messages = await Message.find({
+        conversationId,
+        receiver: userId,
+        status: { $ne: 'read' },
+      });
+
+      // Her mesajı okundu olarak işaretle
+      for (const message of messages) {
+        await message.updateStatus('read', userId);
+      }
 
       // Konuşmadaki okunmamış mesaj sayısını sıfırla
-      await Conversation.findByIdAndUpdate(conversationId, {
-        $set: { [`unreadCount.${userId}`]: 0 },
-      });
+      const conversation = await Conversation.findById(conversationId);
+      if (conversation) {
+        await conversation.resetUnreadCount(userId);
+      }
 
       // Redis'teki mesajları güncelle
       const cachedMessages = await getCachedMessages(conversationId);
 
       for (const message of cachedMessages) {
-        if (message.receiver === userId && !message.read) {
-          message.read = true;
-          message.readAt = new Date();
+        if (message.receiver === userId && message.status !== 'read') {
+          message.status = 'read';
           await cacheMessage(message);
         }
       }
@@ -172,6 +208,7 @@ const messageService = {
       return {
         success: true,
         message: 'Tüm mesajlar okundu olarak işaretlendi',
+        count: messages.length,
       };
     } catch (error) {
       console.error('Tüm mesajları okundu işaretleme hatası:', error);
@@ -188,12 +225,14 @@ const messageService = {
    */
   async setTypingStatus(conversationId, userId, isTyping) {
     try {
+      // Redis'te yazıyor durumunu ayarla
       await setTypingStatus(conversationId, userId, isTyping);
 
       // Konuşmadaki typing durumunu güncelle
-      await Conversation.findByIdAndUpdate(conversationId, {
-        $set: { [`typing.${userId}`]: isTyping },
-      });
+      const conversation = await Conversation.findById(conversationId);
+      if (conversation) {
+        await conversation.updateTypingStatus(userId, isTyping);
+      }
 
       return true;
     } catch (error) {
@@ -237,14 +276,91 @@ const messageService = {
       }
 
       // Mesajı soft delete ile işaretle
-      message.deleted = true;
-      message.deletedFor.push({ user: userId, deletedAt: new Date() });
-      await message.save();
+      await message.softDelete(userId);
+
+      // Konuşmanın son mesajı bu ise, son mesaj önizlemesini güncelle
+      const conversation = await Conversation.findById(message.conversationId);
+      if (
+        conversation &&
+        conversation.lastMessage &&
+        conversation.lastMessage.toString() === message._id.toString()
+      ) {
+        // Son mesaj önizlemesini güncelle
+        conversation.lastMessagePreview = {
+          content: '[Bu mesaj silindi]',
+          sender: message.sender,
+          timestamp: message.createdAt,
+          type: 'deleted',
+        };
+
+        await conversation.save();
+      }
 
       return { success: true, message: 'Mesaj başarıyla silindi' };
     } catch (error) {
       console.error('Mesaj silme hatası:', error);
       throw new Error('Mesaj silinemedi');
+    }
+  },
+
+  /**
+   * Mesajı düzenler
+   * @param {String} messageId - Mesaj ID'si
+   * @param {String} userId - Düzenleme işlemini yapan kullanıcı ID'si
+   * @param {String} newContent - Yeni mesaj içeriği
+   * @returns {Promise<Object>} - Düzenlenen mesaj
+   */
+  async editMessage(messageId, userId, newContent) {
+    try {
+      const message = await Message.findById(messageId);
+
+      if (!message) {
+        throw new Error('Mesaj bulunamadı');
+      }
+
+      // Mesajı düzenle
+      await message.editContent(newContent, userId);
+
+      // Konuşmanın son mesajı bu ise, son mesaj önizlemesini güncelle
+      const conversation = await Conversation.findById(message.conversationId);
+      if (
+        conversation &&
+        conversation.lastMessage &&
+        conversation.lastMessage.toString() === message._id.toString()
+      ) {
+        // Son mesaj önizlemesini güncelle
+        await conversation.updateLastMessagePreview(message);
+      }
+
+      return message;
+    } catch (error) {
+      console.error('Mesaj düzenleme hatası:', error);
+      throw new Error(error.message || 'Mesaj düzenlenemedi');
+    }
+  },
+
+  /**
+   * Mesaja tepki ekler veya kaldırır
+   * @param {String} messageId - Mesaj ID'si
+   * @param {String} userId - Tepki ekleyen kullanıcı ID'si
+   * @param {String} emoji - Emoji
+   * @returns {Promise<Object>} - Güncellenen mesaj
+   */
+  async toggleReaction(messageId, userId, emoji) {
+    try {
+      const message = await Message.findById(messageId);
+
+      if (!message) {
+        throw new Error('Mesaj bulunamadı');
+      }
+
+      // Tepkiyi ekle veya kaldır
+      await message.addReaction(emoji, userId);
+
+      return message;
+    } catch (error) {
+      console.error('Mesaj tepki ekleme hatası:', error);
+      throw new Error('Mesaja tepki eklenemedi');
     }
   },
 
@@ -283,9 +399,9 @@ const messageService = {
       // Kullanıcının katıldığı konuşmaları bul
       const conversations = await Conversation.find({
         participants: userId,
-        deleted: false,
+        isActive: true,
       })
-        .sort({ updatedAt: -1 })
+        .sort({ lastActivity: -1 })
         .skip(parseInt(skip))
         .limit(parseInt(limit))
         .populate({
@@ -294,26 +410,39 @@ const messageService = {
         })
         .populate({
           path: 'lastMessage',
-          select: 'content createdAt sender read',
+          select: 'content createdAt sender status messageType attachments',
         });
 
       // Her konuşma için okunmamış mesaj sayısını hesapla
-      const conversationsWithUnreadCount = await Promise.all(
-        conversations.map(async (conversation) => {
-          const unreadCount = await Message.countDocuments({
-            conversationId: conversation._id,
-            receiver: userId,
-            read: false,
-          });
+      const conversationsWithDetails = conversations.map((conversation) => {
+        const unreadCount =
+          conversation.unreadCount.get(userId.toString()) || 0;
 
-          return {
-            ...conversation.toObject(),
-            unreadCount,
-          };
-        }),
-      );
+        // Konuşma ayarlarını getir
+        const isPinned =
+          conversation.settings.pinned?.get(userId.toString()) || false;
+        const isMuted =
+          conversation.settings.muted?.get(userId.toString()) || false;
+        const isArchived =
+          conversation.settings.archived?.get(userId.toString()) || false;
 
-      return conversationsWithUnreadCount;
+        return {
+          ...conversation.toObject(),
+          unreadCount,
+          isPinned,
+          isMuted,
+          isArchived,
+        };
+      });
+
+      // Önce sabitlenmiş konuşmaları göster
+      conversationsWithDetails.sort((a, b) => {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        return 0;
+      });
+
+      return conversationsWithDetails;
     } catch (error) {
       console.error('Konuşmaları getirme hatası:', error);
       throw new Error('Konuşmalar getirilemedi');
@@ -331,7 +460,7 @@ const messageService = {
       // Konuşma zaten var mı kontrol et
       let conversation = await Conversation.findOne({
         participants: { $all: [userId, participantId] },
-        deleted: false,
+        isActive: true,
       }).populate({
         path: 'participants',
         select: 'name avatar isOnline lastSeen',
@@ -344,7 +473,35 @@ const messageService = {
       // Yeni konuşma oluştur
       conversation = new Conversation({
         participants: [userId, participantId],
-        createdBy: userId,
+        unreadCount: new Map([
+          [userId.toString(), 0],
+          [participantId.toString(), 0],
+        ]),
+        typing: new Map([
+          [userId.toString(), { isTyping: false, lastActivity: new Date() }],
+          [
+            participantId.toString(),
+            { isTyping: false, lastActivity: new Date() },
+          ],
+        ]),
+        settings: {
+          notifications: new Map([
+            [userId.toString(), true],
+            [participantId.toString(), true],
+          ]),
+          pinned: new Map([
+            [userId.toString(), false],
+            [participantId.toString(), false],
+          ]),
+          archived: new Map([
+            [userId.toString(), false],
+            [participantId.toString(), false],
+          ]),
+          muted: new Map([
+            [userId.toString(), false],
+            [participantId.toString(), false],
+          ]),
+        },
       });
 
       await conversation.save();
@@ -355,10 +512,61 @@ const messageService = {
         select: 'name avatar isOnline lastSeen',
       });
 
+      // Kullanıcıların konuşma listesini güncelle
+      await User.findByIdAndUpdate(userId, {
+        $addToSet: { conversations: conversation._id },
+      });
+
+      await User.findByIdAndUpdate(participantId, {
+        $addToSet: { conversations: conversation._id },
+      });
+
       return conversation;
     } catch (error) {
       console.error('Konuşma oluşturma hatası:', error);
       throw new Error('Konuşma oluşturulamadı');
+    }
+  },
+
+  /**
+   * Konuşma ayarlarını günceller
+   * @param {String} conversationId - Konuşma ID'si
+   * @param {String} userId - Kullanıcı ID'si
+   * @param {String} settingType - Ayar türü (notifications, pinned, archived, muted)
+   * @param {Boolean} value - Ayar değeri
+   * @returns {Promise<Object>} - Güncellenen konuşma
+   */
+  async updateConversationSetting(conversationId, userId, settingType, value) {
+    try {
+      const conversation = await Conversation.findById(conversationId);
+
+      if (!conversation) {
+        throw new Error('Konuşma bulunamadı');
+      }
+
+      // Kullanıcının bu konuşmaya erişim yetkisi var mı kontrol et
+      if (!conversation.participants.some((p) => p.toString() === userId)) {
+        throw new Error('Bu konuşmaya erişim yetkiniz yok');
+      }
+
+      // Geçerli ayar türlerini kontrol et
+      const validSettingTypes = [
+        'notifications',
+        'pinned',
+        'archived',
+        'muted',
+      ];
+      if (!validSettingTypes.includes(settingType)) {
+        throw new Error('Geçersiz ayar türü');
+      }
+
+      // Ayarı güncelle
+      await conversation.updateSettings(userId, settingType, value);
+
+      return conversation;
+    } catch (error) {
+      console.error('Konuşma ayarları güncelleme hatası:', error);
+      throw new Error(error.message || 'Konuşma ayarları güncellenemedi');
     }
   },
 };

@@ -7,9 +7,9 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
 
 // Token süreleri
-const ACCESS_TOKEN_EXPIRY = '15m';  // Access token: 15 dakika
+const ACCESS_TOKEN_EXPIRY = '1h';  // Access token: 1 saat
 const REFRESH_TOKEN_EXPIRY = '7d';  // Refresh token: 7 gün
-const ACCESS_TOKEN_EXPIRY_MS = 15 * 60 * 1000; // 15 dakika (milisaniye)
+const ACCESS_TOKEN_EXPIRY_MS = 60 * 60 * 1000; // 1 saat (milisaniye)
 const REFRESH_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 gün (milisaniye)
 
 // Uygulama başlatıldığında JWT anahtarlarını kontrol et
@@ -25,24 +25,33 @@ if (!REFRESH_TOKEN_SECRET) {
 
 // Generate both access and refresh tokens
 export const generateTokens = (userId) => {
-  const accessToken = jwt.sign({ userId }, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
-  const refreshToken = jwt.sign({ userId }, REFRESH_TOKEN_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY });
+  // Token süresini daha uzun tutalım
+  const accessToken = jwt.sign({ userId }, JWT_SECRET, { expiresIn: '1h' }); // 1 saat
+  const refreshToken = jwt.sign({ userId }, REFRESH_TOKEN_SECRET || JWT_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY });
   
   return { 
     accessToken, 
     refreshToken,
-    expiresIn: ACCESS_TOKEN_EXPIRY_MS
+    expiresIn: 60 * 60 * 1000 // 1 saat (milisaniye)
   };
 };
 
 // Verify access token
 export const verifyToken = (token) => {
+  if (!token) {
+    return {
+      decoded: null,
+      expired: false
+    };
+  }
+  
   try {
     return {
       decoded: jwt.verify(token, JWT_SECRET),
       expired: false
     };
   } catch (error) {
+    console.log('Token doğrulama hatası:', error.message);
     return {
       decoded: null,
       expired: error.name === 'TokenExpiredError'
@@ -53,7 +62,7 @@ export const verifyToken = (token) => {
 // Verify refresh token and return user if valid
 export const verifyRefreshToken = async (token) => {
   try {
-    const decoded = jwt.verify(token, REFRESH_TOKEN_SECRET);
+    const decoded = jwt.verify(token, REFRESH_TOKEN_SECRET || JWT_SECRET);
     if (!decoded?.userId) {
       return null;
     }

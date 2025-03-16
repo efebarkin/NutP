@@ -2,12 +2,12 @@ import { useAuthStore } from '@/stores/auth';
 
 export const getAuthToken = () => {
   const authStore = useAuthStore();
-  return authStore.token;
+  return authStore.user?.token;
 };
 
 export const isAuthenticated = () => {
   const authStore = useAuthStore();
-  return !!authStore.token;
+  return authStore.authenticated;
 };
 
 export const logout = () => {

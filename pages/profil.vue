@@ -406,7 +406,7 @@ const addFriend = async email => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${authStore.token}`,
+        Authorization: `Bearer ${authStore.user?.token}`,
       },
       body: JSON.stringify({ email }),
     });
@@ -437,7 +437,7 @@ const removeFriend = async friendId => {
     const response = await fetch(`/api/users/friends/${friendId}`, {
       method: 'DELETE',
       headers: {
-        Authorization: `Bearer ${authStore.token}`,
+        Authorization: `Bearer ${authStore.user?.token}`,
       },
     });
 
@@ -462,7 +462,7 @@ const startConversation = async userId => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${authStore.token}`,
+        Authorization: `Bearer ${authStore.user?.token}`,
       },
       body: JSON.stringify({ participants: [userId] }),
     });

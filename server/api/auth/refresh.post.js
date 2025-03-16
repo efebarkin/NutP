@@ -34,6 +34,7 @@ export default defineEventHandler(async (event) => {
         id: user._id,
         email: user.email,
         name: user.name,
+        token: tokens.accessToken,
         isAdmin: user.isAdmin || false
       }
     };
