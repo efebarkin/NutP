@@ -29,11 +29,11 @@
                 placeholder="Adınız"
                 :class="[
                   'appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm transition-all duration-200',
-                  getError('name') ? 'border-red-300' : 'border-gray-300'
+                  errors.name ? 'border-red-300' : 'border-gray-300'
                 ]"
               />
-              <p v-if="getError('name')" class="mt-2 text-sm text-red-600">
-                {{ getError('name') }}
+              <p v-if="errors.name" class="mt-2 text-sm text-red-600">
+                {{ errors.name }}
               </p>
             </div>
           </div>
@@ -52,11 +52,11 @@
                 placeholder="ornek@email.com"
                 :class="[
                   'appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm transition-all duration-200',
-                  getError('email') ? 'border-red-300' : 'border-gray-300'
+                  errors.email ? 'border-red-300' : 'border-gray-300'
                 ]"
               />
-              <p v-if="getError('email')" class="mt-2 text-sm text-red-600">
-                {{ getError('email') }}
+              <p v-if="errors.email" class="mt-2 text-sm text-red-600">
+                {{ errors.email }}
               </p>
             </div>
           </div>
@@ -75,12 +75,11 @@
                 placeholder="••••••"
                 :class="[
                   'appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm transition-all duration-200',
-                  getError('password') ? 'border-red-300' : 'border-gray-300'
+                  errors.password ? 'border-red-300' : 'border-gray-300'
                 ]"
-                @input="validatePasswordRequirements"
               />
-              <p v-if="getError('password')" class="mt-2 text-sm text-red-600">
-                {{ getError('password') }}
+              <p v-if="errors.password" class="mt-2 text-sm text-red-600">
+                {{ errors.password }}
               </p>
             </div>
           </div>
@@ -99,11 +98,11 @@
                 placeholder="••••••"
                 :class="[
                   'appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm transition-all duration-200',
-                  getError('passwordConfirm') ? 'border-red-300' : 'border-gray-300'
+                  errors.passwordConfirm ? 'border-red-300' : 'border-gray-300'
                 ]"
               />
-              <p v-if="getError('passwordConfirm')" class="mt-2 text-sm text-red-600">
-                {{ getError('passwordConfirm') }}
+              <p v-if="errors.passwordConfirm" class="mt-2 text-sm text-red-600">
+                {{ errors.passwordConfirm }}
               </p>
             </div>
           </div>
@@ -114,7 +113,7 @@
             <ul class="text-sm space-y-1">
               <li :class="passwordRequirements.minLength ? 'text-green-600' : 'text-gray-500'">
                 <span class="inline-block w-4">{{ passwordRequirements.minLength ? '✓' : '•' }}</span>
-                En az 6 karakter
+                En az 8 karakter
               </li>
               <li :class="passwordRequirements.hasUpperCase ? 'text-green-600' : 'text-gray-500'">
                 <span class="inline-block w-4">{{ passwordRequirements.hasUpperCase ? '✓' : '•' }}</span>
@@ -127,6 +126,10 @@
               <li :class="passwordRequirements.hasNumber ? 'text-green-600' : 'text-gray-500'">
                 <span class="inline-block w-4">{{ passwordRequirements.hasNumber ? '✓' : '•' }}</span>
                 En az bir rakam
+              </li>
+              <li :class="passwordRequirements.hasSpecialChar ? 'text-green-600' : 'text-gray-500'">
+                <span class="inline-block w-4">{{ passwordRequirements.hasSpecialChar ? '✓' : '•' }}</span>
+                En az bir özel karakter (@$!%*?&)
               </li>
             </ul>
           </div>
@@ -198,86 +201,100 @@
 import { ref, computed } from 'vue';
 import { navigateTo } from '#app';
 import { useAuthStore } from '~/stores/auth';
-import { registerSchema } from '@/server/validations/userSchema';
-import { useValidation } from '~/composables/useValidation';
 import { useToast } from 'vue-toastification';
+import { useForm, useField } from 'vee-validate';
+import * as yup from 'yup';
 
 const toast = useToast();
 const authStore = useAuthStore();
-const { validate, getError, clearErrors } = useValidation(registerSchema);
 
-const name = ref('');
-const email = ref('');
-const password = ref('');
-const passwordConfirm = ref('');
-
-// Şifre gereksinimlerini kontrol et
-const passwordRequirements = ref({
-  minLength: false,
-  hasUpperCase: false,
-  hasLowerCase: false,
-  hasNumber: false
+// Form validasyon şeması
+const validationSchema = yup.object({
+  name: yup.string()
+    .required('İsim gereklidir')
+    .min(2, 'İsim en az 2 karakter olmalıdır')
+    .matches(/^[a-zA-ZğüşıöçĞÜŞİÖÇ\s]+$/, 'İsim sadece harf ve boşluk içerebilir'),
+  email: yup.string()
+    .required('Email gereklidir')
+    .email('Geçerli bir email adresi giriniz'),
+  password: yup.string()
+    .required('Şifre gereklidir')
+    .min(8, 'Şifre en az 8 karakter olmalıdır')
+    .matches(/[A-Z]/, 'Şifre en az bir büyük harf içermelidir')
+    .matches(/[a-z]/, 'Şifre en az bir küçük harf içermelidir')
+    .matches(/[0-9]/, 'Şifre en az bir rakam içermelidir')
+    .matches(/[@$!%*?&]/, 'Şifre en az bir özel karakter içermelidir'),
+  passwordConfirm: yup.string()
+    .required('Şifre tekrarı gereklidir')
+    .oneOf([yup.ref('password')], 'Şifreler eşleşmiyor')
 });
 
+// VeeValidate form hook'unu kullan
+const { handleSubmit: validateAndSubmit, errors } = useForm({
+  validationSchema,
+  initialValues: {
+    name: '',
+    email: '',
+    password: '',
+    passwordConfirm: ''
+  }
+});
+
+// Form alanlarını tanımla
+const { value: name } = useField('name');
+const { value: email } = useField('email');
+const { value: password } = useField('password');
+const { value: passwordConfirm } = useField('passwordConfirm');
+
 // Şifre gereksinimlerini kontrol et
-function validatePasswordRequirements() {
-  const pass = password.value;
-  passwordRequirements.value = {
-    minLength: pass.length >= 6,
+const passwordRequirements = computed(() => {
+  const pass = password.value || '';
+  return {
+    minLength: pass.length >= 8,
     hasUpperCase: /[A-Z]/.test(pass),
     hasLowerCase: /[a-z]/.test(pass),
-    hasNumber: /[0-9]/.test(pass)
+    hasNumber: /[0-9]/.test(pass),
+    hasSpecialChar: /[@$!%*?&]/.test(pass)
   };
-}
+});
 
 // Form geçerli mi kontrol et
 const isFormValid = computed(() => {
-  const { minLength, hasUpperCase, hasLowerCase, hasNumber } = passwordRequirements.value;
-  return name.value.length >= 2 &&
-         email.value.includes('@') &&
+  const { minLength, hasUpperCase, hasLowerCase, hasNumber, hasSpecialChar } = passwordRequirements.value;
+  return name.value?.length >= 2 &&
+         email.value?.includes('@') &&
          minLength &&
          hasUpperCase &&
          hasLowerCase &&
          hasNumber &&
+         hasSpecialChar &&
          password.value === passwordConfirm.value;
 });
 
-async function handleSubmit() {
-  clearErrors();
-  
-  const formData = {
-    name: name.value,
-    email: email.value,
-    password: password.value,
-    passwordConfirm: passwordConfirm.value
-  };
-
-  if (!validate(formData)) {
-    return;
-  }
-
+// Form gönderme işlemi
+const handleSubmit = validateAndSubmit(async (values) => {
   try {
-    const result = await authStore.register(formData);
-    
+    // API'ye tüm alanları gönder
+    const result = await authStore.register(values);
     if (result && result.success) {
       toast.success('Hesabınız başarıyla oluşturuldu');
-      navigateTo('/login');
-    } else {
-      if (result && result.errors) {
-        // API'den gelen hata mesajlarını form alanlarına atayalım
-        Object.entries(result.errors).forEach(([field, message]) => {
-          errors.value[field] = message;
-        });
-      } else {
-        // Genel hata mesajı
-        errors.value.general = (result && result.message) || authStore.error || 'Kayıt işlemi sırasında bir hata oluştu';
-      }
+      navigateTo('/');
     }
   } catch (err) {
+    // Backend'den dönen validasyon hatalarını inputlara dağıt
+    if (err?.data && err.data.data) {
+      // Zod'un error.format() çıktısı
+      Object.keys(err.data.data).forEach(key => {
+        errors[key] = err.data.data[key]?._errors?.[0] || '';
+      });
+    } else if (err?.data?.message) {
+      toast.error(err.data.message);
+    } else {
+      toast.error('Kayıt sırasında bir hata oluştu');
+    }
     console.error('Register error:', err);
-    errors.value.general = 'Sunucu hatası. Lütfen daha sonra tekrar deneyin.';
   }
-}
+});
 </script>
 
 <style>

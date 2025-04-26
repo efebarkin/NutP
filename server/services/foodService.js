@@ -2,12 +2,159 @@ import Food from '../models/Food';
 import FoodDataService from './foodDataService';
 import User from '../models/User';
 import createError from 'http-errors';
+import mongoose from 'mongoose';
 
-export default class FoodService {
+class FoodService {
   constructor() {
     this.usdaService = new FoodDataService();
   }
 
+  // Besin ekle
+  async addFood(foodData) {
+    try {
+      // Yeni besin oluştur
+      const newFood = new Food(foodData);
+      
+      // Besini kaydet
+      await newFood.save();
+      
+      return {
+        success: true,
+        food: newFood,
+        message: 'Besin başarıyla eklendi'
+      };
+    } catch (error) {
+      console.error('Besin ekleme hatası:', error);
+      
+      // Mongoose validation hatası kontrolü
+      if (error.name === 'ValidationError') {
+        throw createError({
+          statusCode: 400,
+          message: 'Geçersiz veri formatı: ' + Object.values(error.errors).map(e => e.message).join(', ')
+        });
+      }
+      
+      // Genel hata mesajı
+      throw createError({
+        statusCode: 500,
+        message: 'Besin eklenirken bir hata oluştu'
+      });
+    }
+  }
+  
+  // Besin detayını getir
+  async getFoodById(id) {
+
+      if(!mongoose.Types.ObjectId.isValid(id)) {
+        throw createError({
+          statusCode: 400,
+          message: 'Geçersiz besin ID'
+        });
+      }
+      try {
+        //Lean() metodu sadece veri alır, modelleme yapmaz
+        const food = await Food.findById(id).lean();
+        if(!food) {
+          throw createError({
+              statusCode: 404,
+              message: 'Besin bulunamadı'
+          });
+      }
+        return food;
+      } catch (error) {
+        // Eğer zaten bir HTTP error ise tekrar fırlat
+        if (error.statusCode && error.expose) {
+          throw error;
+        }
+        throw createError({
+          statusCode: 500,
+          message: 'Besin bilgileri alınamadı'
+        });
+      }
+  }
+  // Besin sil
+  async deleteFood(id) {
+      if(!mongoose.Types.ObjectId.isValid(id)) {
+        throw createError({
+          statusCode: 400,
+          message: 'Geçersiz besin ID'
+        });
+      }
+      try {
+        const deleted = await Food.findByIdAndDelete(id);
+        if(!deleted) {
+          throw createError({
+            statusCode: 404,
+            message: 'Besin bulunamadı'
+          });
+        }
+        return{
+          success: true,
+          message: 'Besin silindi',
+          deletedId: id
+        };
+      } catch (error) {
+        // Eğer zaten bir HTTP error ise tekrar fırlat
+        if (error.statusCode && error.expose) {
+          throw error;
+        }
+        throw createError({
+          statusCode: 500,
+          message: 'Besin silme başarısız'
+        });
+      }
+  }
+  // Besin güncelle
+  async updateFood(id, event) {
+    if(!mongoose.Types.ObjectId.isValid(id)) {
+      throw createError({
+        statusCode: 400,
+        message: 'Geçersiz besin ID'
+      });
+    }
+    try {
+      // Request body'den gelen verileri al
+      const body = await readBody(event);
+      // Besinin var olup olmadığını kontrol et
+      const existingFood = await Food.findById(id);
+      if(!existingFood) {
+          throw createError({
+              statusCode: 404,
+              message: 'Güncellenecek besin bulunamadı'
+          });
+      }
+      // photoUrl alanını kontrol et ve güncellemeye dahil et
+      const updateData = { ...body };
+      // Besini güncelle
+      const updatedFood = await Food.findByIdAndUpdate(
+          id,
+          { $set: updateData },
+          { new: true, runValidators: true }
+      ).lean();
+
+      return { 
+          success: true, 
+          food: updatedFood,
+          message: 'Besin başarıyla güncellendi'
+      };
+    } catch (error) {
+        console.error('Besin güncelleme hatası:', error);
+        
+        // Mongoose validation hatası kontrolü
+        if (error.name === 'ValidationError') {
+            throw createError({
+                statusCode: 400,
+                message: 'Geçersiz veri formatı: ' + Object.values(error.errors).map(e => e.message).join(', ')
+            });
+        }
+        
+        // Genel hata mesajı
+        throw createError({
+            statusCode: 500,
+            message: 'Besin güncellenirken bir hata oluştu'
+        });
+    }
+  }
   // Besin ara
   async searchFoods(query = '', pageSize = 25, pageNumber = 1) {
     try {
@@ -42,21 +189,6 @@ export default class FoodService {
       throw error;
     }
   }
-
-  // Besin detayını getir
-  async getFoodById(id) {
-    try {
-      const food = await Food.findById(id);
-      if (!food) {
-        throw new Error('Besin bulunamadı');
-      }
-      return food;
-    } catch (error) {
-      console.error('Error fetching food:', error);
-      throw error;
-    }
-  }
-
   // USDA'dan besin verilerini MongoDB'ye aktar
   async importFromUSDA(pageSize = 100, pageNumber = 1) {
     try {
@@ -106,7 +238,6 @@ export default class FoodService {
       throw error;
     }
   }
-
   // USDA besin verilerinden besin değerini çıkar
   extractNutrient(food, nutrientName) {
     const nutrient = food.foodNutrients?.find(n => 
@@ -119,7 +250,6 @@ export default class FoodService {
       unit: nutrient ? (nutrient.unitName || 'g') : 'g'
     };
   }
-
   // Besin kategorisini belirle
   determineCategory(food) {
     const description = food.description.toLowerCase();
@@ -141,6 +271,9 @@ export default class FoodService {
     return 'other';
   }
 }
+
+const foodService = new FoodService();
+export default foodService;
 
 export async function addFavoriteFood(userId, foodId) {
   try {

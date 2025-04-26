@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
+import validator from 'validator';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
 const userSchema = new mongoose.Schema({
   email: {
@@ -7,17 +9,50 @@ const userSchema = new mongoose.Schema({
     required: true,
     unique: true,
     trim: true,
-    lowercase: true
+    lowercase: true,
+    index: true,
+    validate: {
+      validator: validator.isEmail,
+      message: 'Please provide a valid email',
+    },
   },
   password: {
     type: String,
-    required: true,
-    minlength: 6
+    required: [true, 'Please provide a password'],
+    minlength: [8, 'Password should be at least 8 characters'],
+    maxlength: [50, 'Password should be at most 50 characters'],
+    select: false,
+    validate: {
+      validator: function (password) {
+        // En az bir büyük harf, bir küçük harf, bir rakam ve bir özel karakter içermeli
+        const passwordRegex =
+          /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/;
+        return passwordRegex.test(password);
+      },
+      message:
+        'Şifre en az bir büyük harf, bir küçük harf, bir rakam ve bir özel karakter içermelidir',
+    },
+  },
+  passwordConfirm: {
+    type: String,
+    required: [true, 'Please confirm your password'],
+    validate: {
+      // This only works on CREATE and SAVE!!!
+      validator: function (el) {
+        return el === this.password;
+      },
+      message: 'Passwords are not the same!',
+    },
   },
   name: {
     type: String,
-    required: true,
-    trim: true
+    required: [true, 'Please tell us your name'],
+    trim: true,
+    regex: /^[a-zA-ZğüşıöçĞÜŞİÖÇ\s]+$/, // Sadece harf ve boşluk içerebilir
+    validate: {
+      validator: (name) => name.length >= 2 && name.length <= 50,
+      message: 'Name must be between 2 and 50 characters',
+    },
   },
   favoriteFoods: [{
     type: mongoose.Schema.Types.ObjectId,
@@ -28,9 +63,10 @@ const userSchema = new mongoose.Schema({
     ref: 'Meal'
   }],
   refreshToken: String,
-  isAdmin: {
-    type: Boolean,
-    default: false
+  role: {
+    type: [String],
+    enum: ['user', 'admin', 'trainer', 'nutritionist'],
+    default: ['user']
   },
   weeklyPlan: {
     type: Map,
@@ -129,6 +165,7 @@ userSchema.pre('save', async function(next) {
   try {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
+    this.passwordConfirm = undefined;
     next();
   } catch (error) {
     next(error);

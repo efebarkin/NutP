@@ -30,8 +30,10 @@
                 name="email"
                 type="email"
                 required
-                class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
+                class="appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
+                :class="errors.email ? 'border-red-300' : 'border-gray-300'"
               />
+              <p v-if="errors.email && errors.email.includes('gereklidir')" class="mt-2 text-sm text-red-600">{{ errors.email }}</p>
             </div>
           </div>
 
@@ -46,8 +48,10 @@
                 name="password"
                 type="password"
                 required
-                class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
+                class="appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
+                :class="errors.password ? 'border-red-300' : 'border-gray-300'"
               />
+              <p v-if="errors.password && errors.password.includes('gereklidir')" class="mt-2 text-sm text-red-600">{{ errors.password }}</p>
             </div>
           </div>
 
@@ -85,23 +89,44 @@ import { ref } from 'vue';
 import { useAuthStore } from '~/stores/auth';
 import { useToast } from 'vue-toastification';
 import { navigateTo } from '#app';
+import { useForm, useField } from 'vee-validate';
+import * as yup from 'yup';
 
 const toast = useToast();
 const authStore = useAuthStore();
 
-const email = ref('');
-const password = ref('');
+// Yup validasyon şeması
+const validationSchema = yup.object({
+  email: yup.string()
+    .required('Email gereklidir')
+    .email('Geçerli bir email adresi giriniz'),
+  password: yup.string()
+    .required('Şifre gereklidir')
+    .min(8, 'Şifre en az 8 karakter olmalıdır')
+    .matches(/[A-Z]/, 'Şifre en az bir büyük harf içermelidir')
+    .matches(/[a-z]/, 'Şifre en az bir küçük harf içermelidir')
+    .matches(/[0-9]/, 'Şifre en az bir rakam içermelidir')
+    .matches(/[@$!%*?&]/, 'Şifre en az bir özel karakter içermelidir'),
+});
+
+const { handleSubmit: validateAndSubmit, errors } = useForm({
+  validationSchema,
+  initialValues: {
+    email: '',
+    password: ''
+  }
+});
+
+const { value: email } = useField('email');
+const { value: password } = useField('password');
 const error = ref('');
 
-const handleSubmit = async () => {
+const handleSubmit = validateAndSubmit(async (values) => {
+  error.value = '';
   try {
-    error.value = '';
-    const success = await authStore.login(email.value, password.value);
-    
+    const success = await authStore.login(values.email, values.password);
     if (success) {
       toast.success('Başarıyla giriş yapıldı');
-      
-      // Eğer yönlendirme yolu varsa oraya git, yoksa ana sayfaya
       const redirectPath = localStorage.getItem('redirectPath');
       if (redirectPath) {
         localStorage.removeItem('redirectPath');
@@ -113,8 +138,17 @@ const handleSubmit = async () => {
       error.value = authStore.error || 'Giriş yapılırken bir hata oluştu';
     }
   } catch (err) {
-    error.value = typeof err === 'string' ? err : (err.message || 'Giriş yapılırken bir hata oluştu');
+    // Backend'den dönen hata mesajını göster
+    if (err?.data && err.data.data) {
+      Object.keys(err.data.data).forEach(key => {
+        errors[key] = err.data.data[key]?._errors?.[0] || '';
+      });
+    } else if (err?.data?.message) {
+      error.value = err.data.message;
+    } else {
+      error.value = err.message || 'Giriş yapılırken bir hata oluştu';
+    }
     console.error('Login failed:', err);
   }
-};
+});
 </script>

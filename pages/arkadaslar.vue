@@ -298,6 +298,8 @@ const loading = ref(false);
 const loadingRequests = ref(false);
 const loadingSentRequests = ref(false);
 const error = ref(null);
+const errorRequests = ref(null);
+const errorSentRequests = ref(null);
 
 // Arkadaşlar ve istekler
 const friends = ref([]);
@@ -310,7 +312,7 @@ const authStore = useAuthStore();
 const router = useRouter();
 
 // Socket bağlantısı
-const { socket, connected, emit, on, connect, disconnect } = useSocketClient();
+const { socket, connected, emit, on, off, connect, disconnect } = useSocketClient();
 
 // Kullanıcı ID'si
 const userId = computed(() => {
@@ -370,57 +372,48 @@ const fetchFriends = async () => {
     if (connected.value && socket.value) {
       console.log('Socket ile arkadaşlar getiriliyor...');
       
-      // Promise kullanarak Socket.io yanıtını bekle
-      const socketPromise = new Promise((resolve) => {
-        emit('get_friends', {}, response => {
-          console.log('Socket get_friends yanıtı:', response);
-          resolve(response);
-        });
-      });
-      
-      // Timeout ile Socket.io yanıtını bekle
-      const timeoutPromise = new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({ success: false, error: 'Socket timeout' });
-        }, 5000); // 5 saniye timeout
-      });
-      
-      // İlk yanıt veren Promise'i al
-      const response = await Promise.race([socketPromise, timeoutPromise]);
-      
-      if (response && response.success) {
-        // Gelen verileri işle ve kontrol et
-        const friendsData = response.data || [];
+      try {
+        // emit fonksiyonu artık Promise döndürüyor
+        const response = await emit('get_friends', {});
         
-        console.log('Socket arkadaşlar ham veri:', friendsData);
-        
-        // Her bir arkadaşı kontrol et ve gerekirse düzelt
-        friends.value = friendsData.map(friend => {
-          // Arkadaş objesi yoksa veya eksikse, boş bir obje ile doldur
-          if (!friend || typeof friend !== 'object') {
-            console.warn('Eksik arkadaş objesi:', friend);
-            return {
-              _id: 'unknown',
-              name: 'İsimsiz Kullanıcı',
-              avatar: null,
-              isOnline: false
-            };
-          }
+        if (response && response.success) {
+          // Gelen verileri işle ve kontrol et
+          const friendsData = response.data || [];
           
-          // Online durumunu kontrol et
-          if (friend.isOnline === undefined) {
-            friend.isOnline = false;
-          }
+          console.log('Socket arkadaşlar ham veri:', friendsData);
           
-          return friend;
-        });
-        
-        console.log(`${friends.value.length} arkadaş bulundu (Socket)`);
-        console.log('İşlenmiş arkadaşlar:', JSON.stringify(friends.value));
-        loading.value = false;
-      } else {
-        console.error('Socket arkadaş getirme hatası:', response?.error);
-        // Socket başarısız olursa REST API'ye düş
+          // Her bir arkadaşı kontrol et ve gerekirse düzelt
+          friends.value = friendsData.map(friend => {
+            // Arkadaş objesi yoksa veya eksikse, boş bir obje ile doldur
+            if (!friend || typeof friend !== 'object') {
+              console.warn('Eksik arkadaş objesi:', friend);
+              return {
+                _id: 'unknown',
+                name: 'İsimsiz Kullanıcı',
+                avatar: null,
+                isOnline: false
+              };
+            }
+            
+            // Online durumunu kontrol et
+            if (friend.isOnline === undefined) {
+              friend.isOnline = false;
+            }
+            
+            return friend;
+          });
+          
+          console.log(`${friends.value.length} arkadaş bulundu (Socket)`);
+          console.log('İşlenmiş arkadaşlar:', JSON.stringify(friends.value));
+          loading.value = false;
+        } else {
+          console.error('Socket arkadaş getirme hatası:', response?.error);
+          // Socket başarısız olursa REST API'ye düş
+          await fetchFriendsFromAPI();
+        }
+      } catch (error) {
+        console.error('Socket arkadaş getirme hatası:', error);
+        // Hata durumunda REST API'ye düş
         await fetchFriendsFromAPI();
       }
     } else {
@@ -511,52 +504,41 @@ const fetchFriendRequests = async () => {
     }
     
     loadingRequests.value = true;
-    error.value = null;
-
+    errorRequests.value = null;
+    
+    console.log('Arkadaşlık istekleri getiriliyor, userId:', userId.value);
+    
     // Socket ile dene
-    if (connected.value) {
+    if (connected.value && socket.value) {
       console.log('Socket ile arkadaşlık istekleri getiriliyor...');
-      emit('get_friend_requests', {}, response => {
-        console.log('Socket get_friend_requests yanıtı:', response);
+      
+      try {
+        // emit fonksiyonu artık Promise döndürüyor
+        const response = await emit('get_friend_requests', {});
         
         if (response && response.success) {
-          // Gelen verileri işle ve kontrol et
-          const requestsData = response.data || [];
-          
-          // Her bir isteği kontrol et ve gerekirse düzelt
-          friendRequests.value = requestsData.map(request => {
-            // İstek objesi yoksa veya eksikse, boş bir obje ile doldur
-            if (!request || typeof request !== 'object') {
-              console.warn('Eksik istek objesi:', request);
-              return {
-                _id: 'unknown',
-                requester: {
-                  _id: 'unknown',
-                  name: 'İsimsiz Kullanıcı',
-                  avatar: null
-                }
-              };
-            }
-            return request;
-          });
-          
+          // Gelen verileri işle
+          friendRequests.value = response.data || [];
           console.log(`${friendRequests.value.length} arkadaşlık isteği bulundu (Socket)`);
-          console.log('Arkadaşlık İstekleri:', JSON.stringify(friendRequests.value));
           loadingRequests.value = false;
         } else {
-          console.error('Socket arkadaşlık isteği getirme hatası:', response?.error);
+          console.error('Socket arkadaşlık istekleri getirme hatası:', response?.error);
           // Socket başarısız olursa REST API'ye düş
-          fetchFriendRequestsFromAPI();
+          await fetchFriendRequestsFromAPI();
         }
-      });
+      } catch (error) {
+        console.error('Socket arkadaşlık istekleri getirme hatası:', error);
+        // Hata durumunda REST API'ye düş
+        await fetchFriendRequestsFromAPI();
+      }
     } else {
       console.log('Socket bağlantısı yok, REST API ile arkadaşlık istekleri getiriliyor...');
       // Socket bağlantısı yoksa REST API'ye düş
-      fetchFriendRequestsFromAPI();
+      await fetchFriendRequestsFromAPI();
     }
   } catch (err) {
     console.error('Arkadaşlık istekleri getirilirken hata:', err);
-    error.value = 'Arkadaşlık istekleri getirilirken bir hata oluştu';
+    errorRequests.value = 'Arkadaşlık istekleri getirilirken bir hata oluştu';
     loadingRequests.value = false;
     friendRequests.value = []; // Hata durumunda boş dizi
   }
@@ -576,25 +558,8 @@ const fetchFriendRequestsFromAPI = async () => {
       const data = await response.json();
       console.log('API yanıtı:', data);
       
-      // Gelen verileri işle ve kontrol et
-      const requestsData = data.requests || [];
-      
-      // Her bir isteği kontrol et ve gerekirse düzelt
-      friendRequests.value = requestsData.map(request => {
-        // İstek objesi yoksa veya eksikse, boş bir obje ile doldur
-        if (!request || typeof request !== 'object') {
-          console.warn('API: Eksik istek objesi:', request);
-          return {
-            _id: 'unknown',
-            requester: {
-              _id: 'unknown',
-              name: 'İsimsiz Kullanıcı',
-              avatar: null
-            }
-          };
-        }
-        return request;
-      });
+      // Gelen verileri işle
+      friendRequests.value = data.requests || [];
       
       console.log(`${friendRequests.value.length} arkadaşlık isteği bulundu (API)`);
       console.log('API Arkadaşlık İstekleri:', JSON.stringify(friendRequests.value));
@@ -606,16 +571,16 @@ const fetchFriendRequestsFromAPI = async () => {
       // Eğer endpoint yoksa, boş dizi kullan ve hata gösterme
       if (response.status === 404) {
         console.log("Arkadaşlık istekleri endpoint'i bulunamadı, boş dizi kullanılıyor");
-        error.value = null;
+        errorRequests.value = null;
       } else {
-        error.value = 'Arkadaşlık istekleri getirilirken bir hata oluştu';
+        errorRequests.value = 'Arkadaşlık istekleri getirilirken bir hata oluştu';
       }
       
       friendRequests.value = []; // Hata durumunda boş dizi
     }
   } catch (err) {
     console.error('API isteği hatası:', err);
-    error.value = 'Arkadaşlık istekleri getirilirken bir hata oluştu';
+    errorRequests.value = 'Arkadaşlık istekleri getirilirken bir hata oluştu';
     friendRequests.value = []; // Hata durumunda boş dizi
   } finally {
     loadingRequests.value = false;
@@ -631,52 +596,41 @@ const fetchSentRequests = async () => {
     }
     
     loadingSentRequests.value = true;
-    error.value = null;
-
+    errorSentRequests.value = null;
+    
+    console.log('Gönderilen istekler getiriliyor, userId:', userId.value);
+    
     // Socket ile dene
-    if (connected.value) {
+    if (connected.value && socket.value) {
       console.log('Socket ile gönderilen istekler getiriliyor...');
-      emit('get_sent_requests', {}, response => {
-        console.log('Socket get_sent_requests yanıtı:', response);
+      
+      try {
+        // emit fonksiyonu artık Promise döndürüyor
+        const response = await emit('get_sent_requests', {});
         
         if (response && response.success) {
-          // Gelen verileri işle ve kontrol et
-          const requestsData = response.data || [];
-          
-          // Her bir isteği kontrol et ve gerekirse düzelt
-          sentRequests.value = requestsData.map(request => {
-            // İstek objesi yoksa veya eksikse, boş bir obje ile doldur
-            if (!request || typeof request !== 'object') {
-              console.warn('Eksik istek objesi:', request);
-              return {
-                _id: 'unknown',
-                recipient: {
-                  _id: 'unknown',
-                  name: 'İsimsiz Kullanıcı',
-                  avatar: null
-                }
-              };
-            }
-            return request;
-          });
-          
+          // Gelen verileri işle
+          sentRequests.value = response.data || [];
           console.log(`${sentRequests.value.length} gönderilen istek bulundu (Socket)`);
-          console.log('Gönderilen İstekler:', JSON.stringify(sentRequests.value));
           loadingSentRequests.value = false;
         } else {
-          console.error('Socket gönderilen istek getirme hatası:', response?.error);
+          console.error('Socket gönderilen istekler getirme hatası:', response?.error);
           // Socket başarısız olursa REST API'ye düş
-          fetchSentRequestsFromAPI();
+          await fetchSentRequestsFromAPI();
         }
-      });
+      } catch (error) {
+        console.error('Socket gönderilen istekler getirme hatası:', error);
+        // Hata durumunda REST API'ye düş
+        await fetchSentRequestsFromAPI();
+      }
     } else {
       console.log('Socket bağlantısı yok, REST API ile gönderilen istekler getiriliyor...');
       // Socket bağlantısı yoksa REST API'ye düş
-      fetchSentRequestsFromAPI();
+      await fetchSentRequestsFromAPI();
     }
   } catch (err) {
     console.error('Gönderilen istekler getirilirken hata:', err);
-    error.value = 'Gönderilen istekler getirilirken bir hata oluştu';
+    errorSentRequests.value = 'Gönderilen istekler getirilirken bir hata oluştu';
     loadingSentRequests.value = false;
     sentRequests.value = []; // Hata durumunda boş dizi
   }
@@ -696,25 +650,8 @@ const fetchSentRequestsFromAPI = async () => {
       const data = await response.json();
       console.log('API yanıtı:', data);
       
-      // Gelen verileri işle ve kontrol et
-      const requestsData = data.sentRequests || [];
-      
-      // Her bir isteği kontrol et ve gerekirse düzelt
-      sentRequests.value = requestsData.map(request => {
-        // İstek objesi yoksa veya eksikse, boş bir obje ile doldur
-        if (!request || typeof request !== 'object') {
-          console.warn('API: Eksik istek objesi:', request);
-          return {
-            _id: 'unknown',
-            recipient: {
-              _id: 'unknown',
-              name: 'İsimsiz Kullanıcı',
-              avatar: null
-            }
-          };
-        }
-        return request;
-      });
+      // Gelen verileri işle
+      sentRequests.value = data.sentRequests || [];
       
       console.log(`${sentRequests.value.length} gönderilen istek bulundu (API)`);
       console.log('API Gönderilen İstekler:', JSON.stringify(sentRequests.value));
@@ -726,16 +663,16 @@ const fetchSentRequestsFromAPI = async () => {
       // Eğer endpoint yoksa, boş dizi kullan ve hata gösterme
       if (response.status === 404) {
         console.log("Gönderilen istekler endpoint'i bulunamadı, boş dizi kullanılıyor");
-        error.value = null;
+        errorSentRequests.value = null;
       } else {
-        error.value = 'Gönderilen istekler getirilirken bir hata oluştu';
+        errorSentRequests.value = 'Gönderilen istekler getirilirken bir hata oluştu';
       }
       
       sentRequests.value = []; // Hata durumunda boş dizi
     }
   } catch (err) {
     console.error('API isteği hatası:', err);
-    error.value = 'Gönderilen istekler getirilirken bir hata oluştu';
+    errorSentRequests.value = 'Gönderilen istekler getirilirken bir hata oluştu';
     sentRequests.value = []; // Hata durumunda boş dizi
   } finally {
     loadingSentRequests.value = false;
@@ -747,90 +684,33 @@ const acceptFriendRequest = async requestId => {
   try {
     console.log('Arkadaşlık isteği kabul ediliyor, requestId:', requestId);
     
-    // İsteği bul
-    const request = friendRequests.value.find(req => req._id === requestId);
-    if (!request) {
-      console.error('Kabul edilecek istek bulunamadı:', requestId);
-      toast.error('İstek bulunamadı');
-      return;
+    // Socket ile dene
+    if (connected.value) {
+      try {
+        const response = await emit('accept_friend_request', { requestId });
+        
+        if (response && response.success) {
+          console.log('Arkadaşlık isteği başarıyla kabul edildi (Socket)');
+          toast.success('Arkadaşlık isteği kabul edildi');
+          
+          // Listeleri güncelle
+          fetchFriendRequests();
+          fetchFriends();
+          return;
+        } else {
+          console.error('Socket arkadaşlık isteği kabul etme hatası:', response?.error);
+        }
+      } catch (error) {
+        console.error('Socket arkadaşlık isteği kabul etme hatası:', error);
+      }
     }
     
-    // Socket ile dene
-    if (connected.value && socket.value) {
-      console.log('Socket ile arkadaşlık isteği kabul ediliyor...');
-      
-      // Promise kullanarak Socket.io yanıtını bekle
-      const socketPromise = new Promise((resolve) => {
-        emit('accept_friend_request', { requestId }, response => {
-          console.log('Socket accept_friend_request yanıtı:', response);
-          resolve(response);
-        });
-      });
-      
-      // Timeout ile Socket.io yanıtını bekle
-      const timeoutPromise = new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({ success: false, error: 'Socket timeout' });
-        }, 5000); // 5 saniye timeout
-      });
-      
-      // İlk yanıt veren Promise'i al
-      const response = await Promise.race([socketPromise, timeoutPromise]);
-      
-      if (response && response.success) {
-        console.log('Arkadaşlık isteği başarıyla kabul edildi:', response);
-        
-        // İsteği listeden kaldır
-        friendRequests.value = friendRequests.value.filter(req => req._id !== requestId);
-        
-        // Eğer yanıtta friend verisi varsa, arkadaşlar listesine ekle
-        if (response.friend && response.friend._id) {
-          console.log('Yanıtta gelen arkadaş:', response.friend);
-          
-          // Arkadaşın zaten listede olup olmadığını kontrol et
-          const existingFriendIndex = friends.value.findIndex(f => f._id === response.friend._id);
-          
-          if (existingFriendIndex === -1) {
-            // Online durumunu ekle
-            const newFriend = {
-              ...response.friend,
-              isOnline: response.friend.isOnline !== undefined ? response.friend.isOnline : false
-            };
-            
-            console.log('Arkadaşlar listesine yeni arkadaş ekleniyor:', newFriend);
-            friends.value.push(newFriend);
-          } else {
-            console.log('Bu arkadaş zaten listede var, güncelleniyor');
-            // Mevcut arkadaşı güncelle
-            friends.value[existingFriendIndex] = {
-              ...friends.value[existingFriendIndex],
-              ...response.friend,
-              isOnline: response.friend.isOnline !== undefined ? response.friend.isOnline : friends.value[existingFriendIndex].isOnline
-            };
-          }
-        } else {
-          // Arkadaşlar listesini yeniden yükle
-          console.log('Yanıtta friend verisi yok, arkadaşlar listesini yeniliyorum');
-          fetchFriends();
-        }
-        
-        // Başarı mesajı göster
-        toast.success('Arkadaşlık isteği kabul edildi');
-      } else {
-        console.error('İstek kabul edilemedi:', response?.error);
-        toast.error('İstek kabul edilemedi: ' + (response?.error || 'Bilinmeyen hata'));
-        
-        // Socket başarısız olursa REST API'ye düş
-        await acceptFriendRequestViaAPI(requestId);
-      }
-    } else {
-      console.log('Socket bağlantısı yok, REST API ile arkadaşlık isteği kabul ediliyor...');
-      // Socket bağlantısı yoksa REST API'ye düş
-      await acceptFriendRequestViaAPI(requestId);
-    }
+    // Socket başarısız olursa veya bağlantı yoksa REST API'ye düş
+    await acceptFriendRequestViaAPI(requestId);
+    
   } catch (err) {
-    console.error('İstek kabul edilirken hata:', err);
-    toast.error('İstek kabul edilirken bir hata oluştu');
+    console.error('Arkadaşlık isteği kabul edilirken hata:', err);
+    toast.error('Arkadaşlık isteği kabul edilirken bir hata oluştu');
   }
 };
 
@@ -838,14 +718,6 @@ const acceptFriendRequest = async requestId => {
 const acceptFriendRequestViaAPI = async requestId => {
   try {
     console.log('REST API ile arkadaşlık isteği kabul ediliyor...');
-    
-    // İsteği bul
-    const request = friendRequests.value.find(req => req._id === requestId);
-    if (!request) {
-      console.error('API: Kabul edilecek istek bulunamadı:', requestId);
-      toast.error('İstek bulunamadı');
-      return;
-    }
     
     const response = await fetch(`/api/friendship/accept/${requestId}`, {
       method: 'POST',
@@ -856,49 +728,9 @@ const acceptFriendRequestViaAPI = async requestId => {
     if (response.ok) {
       console.log('REST API: Arkadaşlık isteği başarıyla kabul edildi');
       
-      // İsteği listeden kaldır
-      friendRequests.value = friendRequests.value.filter(req => req._id !== requestId);
-      
-      try {
-        // Yanıtı JSON olarak parse et
-        const data = await response.json();
-        console.log('REST API yanıtı:', data);
-        
-        // Eğer yanıtta friend verisi varsa, arkadaşlar listesine ekle
-        if (data && data.friend && data.friend._id) {
-          console.log('API: Yanıtta gelen arkadaş:', data.friend);
-          
-          // Arkadaşın zaten listede olup olmadığını kontrol et
-          const existingFriendIndex = friends.value.findIndex(f => f._id === data.friend._id);
-          
-          if (existingFriendIndex === -1) {
-            // Online durumunu ekle
-            const newFriend = {
-              ...data.friend,
-              isOnline: data.friend.isOnline !== undefined ? data.friend.isOnline : false
-            };
-            
-            console.log('API: Arkadaşlar listesine yeni arkadaş ekleniyor:', newFriend);
-            friends.value.push(newFriend);
-          } else {
-            console.log('API: Bu arkadaş zaten listede var, güncelleniyor');
-            // Mevcut arkadaşı güncelle
-            friends.value[existingFriendIndex] = {
-              ...friends.value[existingFriendIndex],
-              ...data.friend,
-              isOnline: data.friend.isOnline !== undefined ? data.friend.isOnline : friends.value[existingFriendIndex].isOnline
-            };
-          }
-        } else {
-          // Arkadaşlar listesini yeniden yükle
-          console.log('API: Yanıtta friend verisi yok, arkadaşlar listesini yeniliyorum');
-          fetchFriends();
-        }
-      } catch (parseError) {
-        console.error('API yanıtı parse edilirken hata:', parseError);
-        // JSON parse hatası durumunda arkadaşlar listesini yeniden yükle
-        fetchFriends();
-      }
+      // Listeleri güncelle
+      fetchFriendRequests();
+      fetchFriends();
       
       // Başarı mesajı göster
       toast.success('Arkadaşlık isteği kabul edildi');
@@ -917,34 +749,65 @@ const acceptFriendRequestViaAPI = async requestId => {
 // Arkadaşlık isteğini reddet
 const rejectFriendRequest = async requestId => {
   try {
+    console.log('Arkadaşlık isteği reddediliyor, requestId:', requestId);
+    
     // Socket ile dene
     if (connected.value) {
-      emit('reject_friend_request', { requestId }, response => {
-        console.log('Socket reject_friend_request yanıtı:', response);
+      try {
+        const response = await emit('reject_friend_request', { requestId });
         
         if (response && response.success) {
-          // İsteği listeden kaldır
-          friendRequests.value = friendRequests.value.filter(req => req._id !== requestId);
+          console.log('Arkadaşlık isteği başarıyla reddedildi (Socket)');
+          toast.info('Arkadaşlık isteği reddedildi');
+          
+          // Listeleri güncelle
+          fetchFriendRequests();
+          return;
         } else {
-          console.error('İstek reddedilemedi:', response?.error);
+          console.error('Socket arkadaşlık isteği reddetme hatası:', response?.error);
         }
-      });
-    } else {
-      // REST API'ye düş - mevcut API endpoint'inize göre düzenlendi
-      const response = await fetch(`/api/friendship/reject/${requestId}`, {
-        method: 'POST',
-        headers: authStore.getAuthHeader(),
-      });
-
-      if (response.ok) {
-        // İsteği listeden kaldır
-        friendRequests.value = friendRequests.value.filter(req => req._id !== requestId);
-      } else {
-        console.error(`API error: ${response.status}`);
+      } catch (error) {
+        console.error('Socket arkadaşlık isteği reddetme hatası:', error);
       }
     }
+    
+    // Socket başarısız olursa veya bağlantı yoksa REST API'ye düş
+    await rejectFriendRequestViaAPI(requestId);
+    
   } catch (err) {
-    console.error('İstek reddedilirken hata:', err);
+    console.error('Arkadaşlık isteği reddedilirken hata:', err);
+    toast.error('Arkadaşlık isteği reddedilirken bir hata oluştu');
+  }
+};
+
+// REST API ile arkadaşlık isteğini reddet
+const rejectFriendRequestViaAPI = async requestId => {
+  try {
+    console.log('REST API ile arkadaşlık isteği reddediliyor...');
+    
+    const response = await fetch(`/api/friendship/reject/${requestId}`, {
+      method: 'POST',
+      headers: authStore.getAuthHeader(),
+      credentials: 'include', // Cookie'leri de gönder
+    });
+
+    if (response.ok) {
+      console.log('REST API: Arkadaşlık isteği başarıyla reddedildi');
+      
+      // Listeleri güncelle
+      fetchFriendRequests();
+      
+      // Başarı mesajı göster
+      toast.info('Arkadaşlık isteği reddedildi');
+    } else {
+      console.error(`API error: ${response.status}`);
+      const errorText = await response.text();
+      console.error('Hata detayı:', errorText);
+      toast.error('İstek reddedilemedi: ' + (errorText || 'Bilinmeyen hata'));
+    }
+  } catch (err) {
+    console.error('REST API ile istek reddedilirken hata:', err);
+    toast.error('İstek reddedilirken bir hata oluştu');
   }
 };
 
@@ -953,66 +816,126 @@ const cancelFriendRequest = async requestId => {
   try {
     // Socket ile dene
     if (connected.value) {
-      emit('cancel_friend_request', { requestId }, response => {
-        console.log('Socket cancel_friend_request yanıtı:', response);
+      try {
+        const response = await emit('cancel_friend_request', { requestId });
         
         if (response && response.success) {
-          // İsteği listeden kaldır
-          sentRequests.value = sentRequests.value.filter(req => req._id !== requestId);
+          console.log('Arkadaşlık isteği başarıyla iptal edildi (Socket)');
+          toast.info('Arkadaşlık isteği iptal edildi');
+          
+          // Listeleri güncelle
+          fetchSentRequests();
+          return;
         } else {
-          console.error('İstek iptal edilemedi:', response?.error);
+          console.error('Socket arkadaşlık isteği iptal etme hatası:', response?.error);
         }
-      });
-    } else {
-      // REST API'ye düş - mevcut API endpoint'inize göre düzenlendi
-      const response = await fetch(`/api/friendship/cancel/${requestId}`, {
-        method: 'POST',
-        headers: authStore.getAuthHeader(),
-      });
-
-      if (response.ok) {
-        // İsteği listeden kaldır
-        sentRequests.value = sentRequests.value.filter(req => req._id !== requestId);
-      } else {
-        console.error(`API error: ${response.status}`);
+      } catch (error) {
+        console.error('Socket arkadaşlık isteği iptal etme hatası:', error);
       }
     }
+    
+    // Socket başarısız olursa veya bağlantı yoksa REST API'ye düş
+    await cancelFriendRequestViaAPI(requestId);
+    
   } catch (err) {
-    console.error('İstek iptal edilirken hata:', err);
+    console.error('Arkadaşlık isteği iptal edilirken hata:', err);
+    toast.error('Arkadaşlık isteği iptal edilirken bir hata oluştu');
+  }
+};
+
+// REST API ile arkadaşlık isteğini iptal et
+const cancelFriendRequestViaAPI = async requestId => {
+  try {
+    console.log('REST API ile arkadaşlık isteği iptal ediliyor...');
+    
+    const response = await fetch(`/api/friendship/cancel/${requestId}`, {
+      method: 'POST',
+      headers: authStore.getAuthHeader(),
+      credentials: 'include', // Cookie'leri de gönder
+    });
+
+    if (response.ok) {
+      console.log('REST API: Arkadaşlık isteği başarıyla iptal edildi');
+      
+      // Listeleri güncelle
+      fetchSentRequests();
+      
+      // Başarı mesajı göster
+      toast.info('Arkadaşlık isteği iptal edildi');
+    } else {
+      console.error(`API error: ${response.status}`);
+      const errorText = await response.text();
+      console.error('Hata detayı:', errorText);
+      toast.error('İstek iptal edilemedi: ' + (errorText || 'Bilinmeyen hata'));
+    }
+  } catch (err) {
+    console.error('REST API ile istek iptal edilirken hata:', err);
+    toast.error('İstek iptal edilirken bir hata oluştu');
   }
 };
 
 // Arkadaşlıktan çıkar
 const removeFriend = async friendId => {
   try {
+    console.log('Arkadaşlıktan çıkarılıyor, friendId:', friendId);
+    
     // Socket ile dene
     if (connected.value) {
-      emit('remove_friend', { friendId }, response => {
-        console.log('Socket remove_friend yanıtı:', response);
+      try {
+        const response = await emit('remove_friend', { friendId });
         
         if (response && response.success) {
-          // Arkadaşı listeden kaldır
-          friends.value = friends.value.filter(friend => friend._id !== friendId);
+          console.log('Arkadaşlıktan başarıyla çıkarıldı (Socket)');
+          toast.info('Arkadaşlıktan çıkarıldı');
+          
+          // Listeleri güncelle
+          fetchFriends();
+          return;
         } else {
-          console.error('Arkadaş çıkarılamadı:', response?.error);
+          console.error('Socket arkadaşlıktan çıkarma hatası:', response?.error);
         }
-      });
-    } else {
-      // REST API'ye düş - mevcut API endpoint'inize göre düzenlendi
-      const response = await fetch(`/api/friendship/remove/${friendId}`, {
-        method: 'POST',
-        headers: authStore.getAuthHeader(),
-      });
-
-      if (response.ok) {
-        // Arkadaşı listeden kaldır
-        friends.value = friends.value.filter(friend => friend._id !== friendId);
-      } else {
-        console.error(`API error: ${response.status}`);
+      } catch (error) {
+        console.error('Socket arkadaşlıktan çıkarma hatası:', error);
       }
     }
+    
+    // Socket başarısız olursa veya bağlantı yoksa REST API'ye düş
+    await removeFriendViaAPI(friendId);
+    
   } catch (err) {
-    console.error('Arkadaş çıkarılırken hata:', err);
+    console.error('Arkadaşlıktan çıkarılırken hata:', err);
+    toast.error('Arkadaşlıktan çıkarılırken bir hata oluştu');
+  }
+};
+
+// REST API ile arkadaşlıktan çıkmak
+const removeFriendViaAPI = async friendId => {
+  try {
+    console.log('REST API ile arkadaşlıktan çıkılıyor...');
+    
+    const response = await fetch(`/api/friendship/remove/${friendId}`, {
+      method: 'POST',
+      headers: authStore.getAuthHeader(),
+      credentials: 'include', // Cookie'leri de gönder
+    });
+
+    if (response.ok) {
+      console.log('REST API: Arkadaşlıktan başarıyla çıkarıldı');
+      
+      // Listeleri güncelle
+      fetchFriends();
+      
+      // Başarı mesajı göster
+      toast.info('Arkadaşlıktan çıkarıldı');
+    } else {
+      console.error(`API error: ${response.status}`);
+      const errorText = await response.text();
+      console.error('Hata detayı:', errorText);
+      toast.error('Arkadaşlıktan çıkılamadı: ' + (errorText || 'Bilinmeyen hata'));
+    }
+  } catch (err) {
+    console.error('REST API ile arkadaşlıktan çıkılırken hata:', err);
+    toast.error('Arkadaşlıktan çıkılırken bir hata oluştu');
   }
 };
 
@@ -1030,182 +953,118 @@ const refreshFriends = () => {
 
 // Socket olaylarını dinle
 const setupSocketListeners = () => {
-  console.log('Arkadaşlık olayları dinleyicileri ayarlanıyor...');
+  console.log('Arkadaşlık olayları dinleyicileri kuruluyor...');
+  
+  // Socket bağlantısını kontrol et
+  if (!socket.value || !connected.value) {
+    console.error('Socket bağlantısı yok, arkadaşlık olayları dinleyicileri kurulamıyor');
+    return;
+  }
   
   // Önceki dinleyicileri temizle
-  emitter.off('friendship:request_accepted');
-  emitter.off('friendship:request_received');
-  emitter.off('friendship:request_rejected');
-  emitter.off('friendship:friend_removed');
+  try {
+    off('friend_request_received');
+    off('friend_request_accepted');
+    off('friend_request_rejected');
+    off('friend_request_canceled');
+    off('friend_removed');
+    off('user_status_changed');
+  } catch (error) {
+    console.error('Dinleyiciler temizlenirken hata oluştu:', error);
+  }
   
-  // Arkadaşlık isteği kabul edildiğinde
-  emitter.on('friendship:request_accepted', (data) => {
-    console.log('Emitter: Arkadaşlık isteği kabul edildi olayı alındı:', data);
-    
-    if (!data) {
-      console.error('Geçersiz arkadaşlık isteği kabul edildi verisi:', data);
-      return;
-    }
-    
-    // İsteği listeden kaldır
-    if (data.requestId) {
-      console.log('İstek listeden kaldırılıyor:', data.requestId);
-      friendRequests.value = friendRequests.value.filter(req => req._id !== data.requestId);
-    }
-    
-    // Eğer friend verisi varsa, arkadaşlar listesine ekle
-    if (data.friend && data.friend._id) {
-      console.log('Kabul edilen arkadaşlık isteğinden gelen arkadaş:', data.friend);
-      
-      // Arkadaşın zaten listede olup olmadığını kontrol et
-      const existingFriendIndex = friends.value.findIndex(f => f._id === data.friend._id);
-      
-      if (existingFriendIndex === -1) {
-        // Online durumunu ekle
-        const newFriend = {
-          ...data.friend,
-          isOnline: data.friend.isOnline !== undefined ? data.friend.isOnline : false
-        };
-        
-        console.log('Arkadaşlar listesine yeni arkadaş ekleniyor:', newFriend);
-        friends.value.push(newFriend);
-      } else {
-        console.log('Bu arkadaş zaten listede var, güncelleniyor');
-        // Mevcut arkadaşı güncelle
-        friends.value[existingFriendIndex] = {
-          ...friends.value[existingFriendIndex],
-          ...data.friend,
-          isOnline: data.friend.isOnline !== undefined ? data.friend.isOnline : friends.value[existingFriendIndex].isOnline
-        };
-      }
-    } else {
-      console.log('Friend verisi yok veya eksik, arkadaşlar listesini yeniliyorum');
-      fetchFriends();
-    }
+  // Yeni arkadaşlık isteği alındığında
+  on('friend_request_received', (data) => {
+    console.log('Yeni arkadaşlık isteği alındı:', data);
+    toast.info(`${data.requester.name || 'Bir kullanıcı'} size arkadaşlık isteği gönderdi`);
+    fetchFriendRequests(); // İstekleri yenile
   });
   
-  // Arkadaşlık isteği alındığında
-  emitter.on('friendship:request_received', (data) => {
-    console.log('Emitter: Yeni arkadaşlık isteği alındı olayı:', data);
-    
-    if (!data || !data.requester || !data.requestId) {
-      console.error('Geçersiz arkadaşlık isteği alındı verisi:', data);
-      return;
-    }
-    
-    // İsteğin zaten listede olup olmadığını kontrol et
-    const existingRequestIndex = friendRequests.value.findIndex(req => req._id === data.requestId);
-    
-    if (existingRequestIndex === -1) {
-      // Yeni isteği ekle
-      const newRequest = {
-        _id: data.requestId,
-        requester: data.requester,
-        status: 'pending',
-        createdAt: new Date()
-      };
-      
-      console.log('Arkadaşlık istekleri listesine yeni istek ekleniyor:', newRequest);
-      friendRequests.value.push(newRequest);
-    } else {
-      console.log('Bu istek zaten listede var, güncelleniyor');
-      // Mevcut isteği güncelle
-      friendRequests.value[existingRequestIndex] = {
-        ...friendRequests.value[existingRequestIndex],
-        requester: data.requester,
-        status: 'pending'
-      };
-    }
+  // Arkadaşlık isteği kabul edildiğinde
+  on('friend_request_accepted', (data) => {
+    console.log('Arkadaşlık isteği kabul edildi:', data);
+    toast.success(`${data.recipient.name || 'Bir kullanıcı'} arkadaşlık isteğinizi kabul etti`);
+    fetchFriends(); // Arkadaşları yenile
+    fetchSentRequests(); // Gönderilen istekleri yenile
   });
   
   // Arkadaşlık isteği reddedildiğinde
-  emitter.on('friendship:request_rejected', (data) => {
-    console.log('Emitter: Arkadaşlık isteği reddedildi olayı:', data);
-    
-    if (!data || !data.requestId) {
-      console.error('Geçersiz arkadaşlık isteği reddedildi verisi:', data);
-      return;
-    }
-    
-    // İsteği listeden kaldır
-    console.log('İstek listeden kaldırılıyor:', data.requestId);
-    friendRequests.value = friendRequests.value.filter(req => req._id !== data.requestId);
+  on('friend_request_rejected', (data) => {
+    console.log('Arkadaşlık isteği reddedildi:', data);
+    toast.info(`${data.recipient.name || 'Bir kullanıcı'} arkadaşlık isteğinizi reddetti`);
+    fetchSentRequests(); // Gönderilen istekleri yenile
   });
   
-  // Arkadaş kaldırıldığında
-  emitter.on('friendship:friend_removed', (data) => {
-    console.log('Emitter: Arkadaş kaldırıldı olayı:', data);
-    
-    if (!data || !data.friendId) {
-      console.error('Geçersiz arkadaş kaldırıldı verisi:', data);
-      return;
-    }
-    
-    // Arkadaşı listeden kaldır
-    console.log('Arkadaş listeden kaldırılıyor:', data.friendId);
-    friends.value = friends.value.filter(friend => friend._id !== data.friendId);
+  // Arkadaşlık isteği iptal edildiğinde
+  on('friend_request_canceled', (data) => {
+    console.log('Arkadaşlık isteği iptal edildi:', data);
+    fetchFriendRequests(); // İstekleri yenile
   });
   
-  console.log('Arkadaşlık olayları dinleyicileri ayarlandı');
+  // Arkadaşlıktan çıkarıldığında
+  on('friend_removed', (data) => {
+    console.log('Arkadaşlıktan çıkarıldı:', data);
+    toast.info(`${data.remover.name || 'Bir kullanıcı'} sizi arkadaşlıktan çıkardı`);
+    fetchFriends(); // Arkadaşları yenile
+  });
+  
+  // Kullanıcı durumu değiştiğinde
+  on('user_status_changed', (data) => {
+    console.log('Kullanıcı durumu değişti:', data);
+    
+    // Arkadaşlar listesinde kullanıcıyı bul ve durumunu güncelle
+    const friendIndex = friends.value.findIndex(f => f._id === data.userId);
+    if (friendIndex !== -1) {
+      friends.value[friendIndex].isOnline = data.isOnline;
+      console.log(`${friends.value[friendIndex].name} kullanıcısının durumu güncellendi: ${data.isOnline ? 'Çevrimiçi' : 'Çevrimdışı'}`);
+    }
+  });
 };
+
+// Sayfa yüklendiğinde
+onMounted(async () => {
+  // Kullanıcı giriş yapmışsa verileri yükle
+  if (authStore.authenticated && userId.value) {
+    console.log('Arkadaşlar sayfası yükleniyor, userId:', userId.value);
+    
+    // Socket bağlantısını kontrol et
+    if (!connected.value) {
+      console.log('Socket bağlantısı kuruluyor...');
+      await connect();
+    }
+    
+    // Verileri yükle
+    fetchFriends();
+    fetchFriendRequests();
+    fetchSentRequests();
+    
+    // Socket olaylarını dinle
+    setupSocketListeners();
+  } else {
+    console.log('Kullanıcı giriş yapmamış, veriler yüklenmiyor');
+  }
+});
 
 // Sayfa kapatıldığında dinleyicileri temizle
 onBeforeUnmount(() => {
   console.log('Arkadaşlık olayları dinleyicileri temizleniyor...');
   
-  // Emitter dinleyicilerini temizle
-  emitter.off('friendship:request_accepted');
-  emitter.off('friendship:request_received');
-  emitter.off('friendship:request_rejected');
-  emitter.off('friendship:friend_removed');
-});
-
-// Sayfa yüklendiğinde
-onMounted(async () => {
-  console.log('Arkadaşlar sayfası yüklendi');
-  
-  // Auth durumunu kontrol et
-  if (!authStore.authenticated) {
-    console.log('Kullanıcı oturum açmamış, yönlendiriliyor...');
-    return router.push('/giris');
+  // Socket bağlantısını kontrol et
+  if (!socket.value) {
+    console.log('Socket bağlantısı yok, temizleme işlemi atlanıyor');
+    return;
   }
   
-  // Kullanıcı kimliğini kontrol et
-  if (!userId.value) {
-    console.error('Kullanıcı kimliği bulunamadı');
-    toast.error('Kullanıcı bilgilerinize erişilemiyor');
-    return router.push('/giris');
-  }
-  
-  console.log('Kullanıcı kimliği:', userId.value);
-  
-  // Socket bağlantısını kontrol et ve gerekirse bağlan
-  if (!connected.value || !socket.value) {
-    console.log('Socket bağlantısı kuruluyor...');
-    connect();
-  } else {
-    console.log('Socket zaten bağlı');
-  }
-  
-  // Socket olaylarını dinle
-  setupSocketListeners();
-  
+  // Socket dinleyicilerini temizle
   try {
-    // Arkadaşları yükle
-    await fetchFriends();
-    
-    // Arkadaşlık isteklerini yükle
-    await fetchFriendRequests();
-    
-    // Gönderilen istekleri yükle
-    await fetchSentRequests();
-    
-    // Yükleme durumunu güncelle
-    loading.value = false;
+    off('friend_request_received');
+    off('friend_request_accepted');
+    off('friend_request_rejected');
+    off('friend_request_canceled');
+    off('friend_removed');
+    off('user_status_changed');
   } catch (error) {
-    console.error('Veri yükleme hatası:', error);
-    toast.error('Veriler yüklenirken bir hata oluştu');
-    loading.value = false;
+    console.error('Dinleyiciler temizlenirken hata oluştu:', error);
   }
 });
 </script>

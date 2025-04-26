@@ -125,10 +125,28 @@ export const defineAdminHandler = (handler) => {
   return defineEventHandler(async (event) => {
     await verifyAuth(event);
     
-    if (!event.context.auth.user.isAdmin) {
+    const rules = event.context.auth.user.role;
+
+    if (!rules || !rules.includes('admin')) {
       throw createError({
         statusCode: 403,
         message: 'Admin yetkisi gerekli'
+      });
+    }
+
+    return handler(event);
+  });
+};
+
+export const defineRoleHandler = (allowedRoles, handler) => {
+  return defineEventHandler(async (event) => {
+    await verifyAuth(event);
+
+    const userRoles = event.context.auth.user.role;
+    if (!userRoles || !allowedRoles.some(role => userRoles.includes(role))) {
+      throw createError({
+        statusCode: 403,
+        message: `Bu işlemi yapmak için yetkiniz yok: ${allowedRoles.join(', ')}`
       });
     }
 

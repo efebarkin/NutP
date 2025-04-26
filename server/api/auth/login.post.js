@@ -2,32 +2,27 @@ import { defineEventHandler, readBody, createError, setCookie } from 'h3';
 import bcrypt from 'bcryptjs';
 import { User } from '~/server/models/User';
 import { generateTokens, setAuthCookies } from '~/server/utils/auth';
+import { loginSchema } from '~/server/validations/userValidation';
 
 export default defineEventHandler(async (event) => {
   try {
-    // Wrap the readBody call in a try-catch to handle JSON parsing errors gracefully
-    let email, password;
-    try {
-      const body = await readBody(event);
-      email = body.email;
-      password = body.password;
-    } catch (error) {
+    const body = await readBody(event);
+    //Zod validation
+    const result = loginSchema.safeParse(body);
+
+    //Validation error
+    if (!result.success) {
       throw createError({
         statusCode: 400,
-        message: 'Geçersiz istek formatı. Lütfen geçerli bir JSON verisi gönderin.'
+        message: 'Validation error'
       });
     }
+    //Validation successful
+    const { email, password } = result.data;
 
-    // Validate input
-    if (!email || !password) {
-      throw createError({
-        statusCode: 400,
-        message: 'Email ve şifre gerekli'
-      });
-    }
-
-    // Find user
-    const user = await User.findOne({ email });
+    //Find user and select password
+    const user = await User.findOne({ email }).select('+password');
+    //User control
     if (!user) {
       throw createError({
         statusCode: 401,
@@ -35,22 +30,22 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    // Check password
-    const isValidPassword = await bcrypt.compare(password, user.password);
-    if (!isValidPassword) {
+    //Password verification
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
       throw createError({
         statusCode: 401,
         message: 'Geçersiz email veya şifre'
       });
     }
 
-    // Generate tokens using the auth utility
+    //Generate tokens
     const tokens = generateTokens(user._id);
-    
-    // Set auth cookies using the utility function
+
+    //Set auth cookies
     setAuthCookies(event, tokens);
 
-    // Return user info without sensitive data
+    //Return user info
     return {
       success: true,
       user: {

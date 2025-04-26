@@ -35,6 +35,13 @@ export default defineNuxtConfig({
           rel: 'stylesheet',
           href: 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css'
         }
+      ],
+      // Content Security Policy ayarları - görsel kaynaklarını genişlet
+      meta: [
+        {
+          name: 'Content-Security-Policy',
+          content: "img-src 'self' data: blob: https:;"
+        }
       ]
     },
   },
@@ -52,7 +59,7 @@ export default defineNuxtConfig({
     },
     routeRules: {
       '/**': { isr: true },
-      '/socket.io/**': { proxy: '' }
+      '/socket.io/**': { proxy: 'http://localhost:3000' }
     },
   },
   $development: {
@@ -74,6 +81,12 @@ export default defineNuxtConfig({
     mongodbUri: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/nutdb',
     jwtSecret: process.env.JWT_SECRET || 'your-secret-key',
     openaiApiKey: process.env.OPENAI_API_KEY,
+    aws: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      region: process.env.AWS_REGION || 'eu-north-1',
+      bucketName: process.env.AWS_BUCKET_NAME || 'nutproject',
+    },
     public: {
       apiBase: process.env.NUXT_PUBLIC_API_BASE || '/api',
     },

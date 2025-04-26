@@ -5,6 +5,7 @@ const foodSchema = new mongoose.Schema({
     tr: { type: String, required: true },
     en: { type: String, required: true }
   },
+  photoUrl: { type: String },
   nutrients: {
     energy: {
       value: { type: Number, default: 0 },

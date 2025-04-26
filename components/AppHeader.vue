@@ -38,6 +38,60 @@
               class="absolute bottom-0 left-0 w-full h-0.5 bg-green-500"
             ></span>
           </NuxtLink>
+          
+          <!-- Hesaplayıcılar Dropdown -->
+          <div class="relative group">
+            <button 
+              @click.stop="toggleCalculatorMenu"
+              class="text-gray-700 hover:text-green-600 transition-colors relative px-2 py-1 overflow-hidden flex items-center"
+              :class="{ 'text-green-600 font-medium': isCalculatorRoute }"
+              data-calculator-button
+            >
+              <span class="relative z-10">Hesaplayıcılar</span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4 ml-1 transition-transform duration-300"
+                :class="{ 'rotate-180': isCalculatorMenuOpen }"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+              <span
+                class="absolute bottom-0 left-0 w-0 h-0.5 bg-green-500 group-hover:w-full transition-all duration-300"
+              ></span>
+              <span
+                v-if="isCalculatorRoute"
+                class="absolute bottom-0 left-0 w-full h-0.5 bg-green-500"
+              ></span>
+            </button>
+            
+            <!-- Hesaplayıcılar Dropdown Menu -->
+            <div 
+              v-if="isCalculatorMenuOpen" 
+              class="absolute left-0 mt-2 w-56 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5 z-50"
+              ref="calculatorMenuRef"
+            >
+              <NuxtLink
+                v-for="(tool, index) in calculatorTools"
+                :key="index"
+                :to="tool.path"
+                class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                @click="closeCalculatorMenu"
+              >
+                <div class="flex items-center">
+                  <div class="w-2 h-2 rounded-full mr-2" :class="tool.dotColor"></div>
+                  {{ tool.name }}
+                </div>
+              </NuxtLink>
+            </div>
+          </div>
         </div>
 
         <!-- Sağ taraf - Kullanıcı Menüsü -->
@@ -321,6 +375,8 @@ const authStore = useAuthStore();
 const router = useRouter();
 const isMenuOpen = ref(false);
 const isMobileMenuOpen = ref(false);
+const isCalculatorMenuOpen = ref(false);
+const calculatorMenuRef = ref(null);
 
 // Kullanıcı durumunu computed property olarak tanımla
 // Bu, authStore.authenticated değeri değiştiğinde otomatik olarak güncellenecek
@@ -333,8 +389,24 @@ const menuItems = [
   { name: 'Besin Kataloğu', path: '/yiyecekler' },
   { name: 'Öğün Planlayıcı', path: '/ogun' },
   { name: 'Beslenme Rehberi', path: '/nutrition-guide' },
-  { name: 'Vücut Ölçümleri', path: '/YagOrani' },
   { name: 'Glisemik İndeks', path: '/glisemik-index' },
+];
+
+// Hesaplayıcı sayfalarında olup olmadığını kontrol et
+const isCalculatorRoute = computed(() => {
+  const calculatorRoutes = ['/YagOrani', '/SuIhtiyaci', '/KaloriIhtiyaci', '/BmiHesaplayici'];
+  return calculatorRoutes.includes(router.currentRoute.value.path);
+});
+
+// Hesaplayıcı araçları
+const calculatorTools = [
+  { name: 'Vücut Kitle İndeksi (BMI)', path: '/BmiHesaplayici', dotColor: 'bg-blue-500' },
+  { name: 'Günlük Kalori İhtiyacı', path: '/KaloriIhtiyaci', dotColor: 'bg-orange-500' },
+  { name: 'Günlük Su İhtiyacı', path: '/SuIhtiyaci', dotColor: 'bg-cyan-500' },
+  { name: 'Vücut Yağ Oranı', path: '/YagOrani', dotColor: 'bg-purple-500' },
+  { name: 'BMR (Bazal Metabolizma Hızı)', path: '/BmrHesaplayici', dotColor: 'bg-green-500' },
+  { name: 'Uyku & Kalori Dengesi', path: '/UykuKaloriHesaplayici', dotColor: 'bg-indigo-500' },
+  { name: 'Antrenman Kalori Yakma', path: '/AntrenmanKaloriHesaplayici', dotColor: 'bg-red-500' },
 ];
 
 function toggleMobileMenu() {
@@ -343,6 +415,14 @@ function toggleMobileMenu() {
 
 function closeMobileMenu() {
   isMobileMenuOpen.value = false;
+}
+
+function toggleCalculatorMenu() {
+  isCalculatorMenuOpen.value = !isCalculatorMenuOpen.value;
+}
+
+function closeCalculatorMenu() {
+  isCalculatorMenuOpen.value = false;
 }
 
 async function handleLogout() {
@@ -360,6 +440,8 @@ watch(
   () => router.currentRoute.value.path,
   () => {
     isMenuOpen.value = false;
+    isMobileMenuOpen.value = false;
+    isCalculatorMenuOpen.value = false;
   }
 );
 
@@ -369,6 +451,14 @@ onMounted(async () => {
     const menu = document.querySelector('.relative');
     if (menu && !menu.contains(event.target)) {
       isMenuOpen.value = false;
+    }
+
+    // Only close calculator menu if the click is not on the calculator button
+    const calculatorButton = document.querySelector('[data-calculator-button]');
+    if (calculatorMenuRef.value && 
+        !calculatorMenuRef.value.contains(event.target) && 
+        !(calculatorButton && calculatorButton.contains(event.target))) {
+      closeCalculatorMenu();
     }
   });
 

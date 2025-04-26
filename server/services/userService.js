@@ -85,6 +85,26 @@ class UserService {
     }
   }
 
+  async getAllUsers() {
+    try {
+      const users = await User.find().select('-password -__v');
+      return users;
+    } catch (error) {
+      console.error('Kullanıcılar getirme hatası:', error);
+      throw error;
+    }
+  }
+
+  async deleteUser(userId) {
+    try {
+      const user = await User.findByIdAndDelete(userId);
+      return user;
+    } catch (error) {
+      console.error('Kullanıcı silme hatası:', error);
+      throw error;
+    }
+  }
+
   /**
    * Kullanıcı ara
    * @param {string} query - Arama sorgusu
