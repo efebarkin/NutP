@@ -2,5 +2,5 @@ import { defineEventHandler } from 'h3';
 import authService from '~/server/services/authService';
 
 export default defineEventHandler(async (event) => {
-  return await authService.register(event);
+  return authService.register(event);
 });

@@ -1,7 +1,6 @@
 import UserService from '~/server/services/userService.js';
+import { defineRoleHandler } from '~/server/utils/auth';
 
-export default defineEventHandler(async (event) => {
-    const { userId } = event.context.params;
-    const user = await UserService.deleteUser(userId);
-    return { user };
+export default defineRoleHandler(['admin'], async (event) => {
+    return UserService.deleteUser(event);
 });

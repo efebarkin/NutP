@@ -13,8 +13,9 @@ class FavoritesService {
    * @param {boolean} transform - Veriyi dönüştürme seçeneği
    * @returns {Promise<Array>} - Favori besinler listesi
    */
-  async getFavoriteFoods(userId, transform = true) {
+  async getFavoriteFoods(event) {
     try {
+      const userId = event.context.auth.user._id;
       // N+1 sorgu problemini çözmek için tek bir aggregation pipeline kullanıyoruz
       // Bu, tüm ilişkili verileri tek bir sorguda getirir
       const result = await User.aggregate([
@@ -64,10 +65,6 @@ class FavoritesService {
       const foods = user.favoriteFoodsData || [];
       const categories = user.categoriesData || [];
 
-      if (!transform) {
-        return foods;
-      }
-
       // Transform the data to ensure all required fields exist
       return foods.map(food => {
         // Besinin kategorisini bul
@@ -106,8 +103,10 @@ class FavoritesService {
    * @param {string} foodId - Besin ID
    * @returns {Promise<Object>} - İşlem sonucu
    */
-  async addFavoriteFood(userId, foodId) {
+  async addFavoriteFood(event) {
     try {
+      const userId = event.context.auth.user._id; // id yerine _id kullanıyoruz
+      const { foodId } = await readBody(event);
       // Besin ID kontrolü
       if (!foodId) {
         throw createError({
@@ -178,10 +177,10 @@ class FavoritesService {
    * @param {string} foodId - Besin ID
    * @returns {Promise<Object>} - İşlem sonucu
    */
-  async removeFavoriteFood(userId, foodId) {
+  async removeFavoriteFood(event) {
     try {
-      // Kullanıcı kontrolü - findOne ile hem kullanıcıyı bul hem de favori kontrolü yap
-      // Bu, iki ayrı sorgu yerine tek sorgu kullanmamızı sağlar
+      const userId = event.context.auth.user._id;
+      const foodId = event.context.params.id;
       const user = await User.findOne({
         _id: userId,
         favoriteFoods: { $in: [foodId] }

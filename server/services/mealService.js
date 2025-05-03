@@ -1,226 +1,267 @@
-// services/mealService.js
-
 import { Meal } from '../models/Meal';
-import { User } from '../models/User';
 import { Food } from '../models/Food';
 import createError from 'http-errors';
+import { getServerSession } from '~/server/utils/auth';
+import { ErrorTypes } from '~/server/utils/error';
+import { readBody } from 'h3';
 
 class MealService {
-  static async createMeal(userId, mealData) {
+  async createMeal(event) {
     try {
-      // Check if user exists
-      const user = await User.findById(userId);
-      if (!user) {
+      // Request body'den verileri al
+      const body = await readBody(event);
+      
+      // Gerekli alanları kontrol et
+      if (!body.name || !body.type || !body.date || !Array.isArray(body.foods) || body.foods.length === 0) {
         throw createError({
-          statusCode: 404,
-          message: 'User not found'
+          statusCode: 400,
+          message: 'Eksik bilgi: name, type, date ve en az bir besin gerekli'
         });
       }
-
-      // Create new meal
-      const meal = new Meal({
-        ...mealData,
-        userId: userId,
-        date: mealData.date || new Date(),
-        foods: mealData.foods.map(food => ({
+  
+      // Foods array'indeki her öğeyi kontrol et
+      const foodPromises = body.foods.map(async (food) => {
+        if (!food.foodId || !food.quantity) {
+          throw createError({
+            statusCode: 400,
+            message: 'Her besin için foodId ve quantity gerekli'
+          });
+        }
+  
+        // Food'un veritabanında var olduğunu kontrol et
+        const existingFood = await Food.findById(food.foodId);
+        if (!existingFood) {
+          throw createError({
+            statusCode: 404,
+            message: `${food.foodId} ID'li besin bulunamadı`
+          });
+        }
+  
+        return {
           foodId: food.foodId,
-          quantity: food.quantity || 100, // default to 100g if not specified
-          unit: food.unit || 'g'
-        }))
+          quantity: {
+            value: parseInt(food.quantity),
+            unit: 'g'
+          }
+        };
       });
-
-      // Calculate total nutrients
-      const foodIds = meal.foods.map(f => f.foodId);
-      const foods = await Food.find({ _id: { $in: foodIds } });
-      
-      meal.totalNutrients = MealService.calculateTotalNutrients(foods, meal.foods);
-
+  
+      // Tüm food promise'larını çözümle
+      const validatedFoods = await Promise.all(foodPromises);
+  
+      // Yeni meal oluştur
+      const meal = new Meal({
+        userId: event.context.auth.user._id, // _id yerine id kullanıyoruz
+        name: body.name,
+        type: body.type,
+        date: new Date(body.date),
+        foods: validatedFoods
+      });
+  
+      // Meal'i kaydet
       await meal.save();
-      return meal;
+  
+      return {
+        success: true,
+        message: 'Öğün başarıyla oluşturuldu',
+        meal: meal
+      };
     } catch (error) {
       console.error('Error creating meal:', error);
-      throw error;
-    }
-  }
-
-  static async getUserMeals(userId, query = {}) {
-    try {
-      const { startDate, endDate, type } = query;
-      const queryObj = { userId };
-
-      if (startDate || endDate) {
-        queryObj.date = {};
-        if (startDate) queryObj.date.$gte = new Date(startDate);
-        if (endDate) queryObj.date.$lte = new Date(endDate);
-      }
-
-      if (type) {
-        queryObj.type = type;
-      }
-
-      const meals = await Meal.find(queryObj)
-        .populate('foods.foodId')
-        .sort({ date: -1 });
-
-      return meals;
-    } catch (error) {
-      console.error('Error getting user meals:', error);
-      throw error;
-    }
-  }
-
-  static async updateMeal(userId, mealId, updateData) {
-    try {
-      const meal = await Meal.findOne({ _id: mealId, userId });
-      if (!meal) {
-        throw createError({
-          statusCode: 404,
-          message: 'Meal not found or unauthorized'
-        });
-      }
-
-      // Update meal data
-      Object.assign(meal, updateData);
-
-      // Recalculate nutrients if foods were updated
-      if (updateData.foods) {
-        const foodIds = meal.foods.map(f => f.foodId);
-        const foods = await Food.find({ _id: { $in: foodIds } });
-        meal.totalNutrients = MealService.calculateTotalNutrients(foods, meal.foods);
-      }
-
-      await meal.save();
-      return meal;
-    } catch (error) {
-      console.error('Error updating meal:', error);
-      throw error;
-    }
-  }
-
-  static async deleteMeal(userId, mealId) {
-    try {
-      const result = await Meal.deleteOne({ _id: mealId, userId });
-      if (result.deletedCount === 0) {
-        throw createError({
-          statusCode: 404,
-          message: 'Meal not found or unauthorized'
-        });
-      }
-      return { success: true };
-    } catch (error) {
-      console.error('Error deleting meal:', error);
-      throw error;
-    }
-  }
-
-  static async getMealById(mealId, userId) {
-    try {
-      const meal = await Meal.findOne({ _id: mealId, userId }).populate('foods.foodId');
-      if (!meal) {
-        throw new Error('Meal not found');
-      }
-      return meal;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  static async addFoodToMeal(mealId, userId, foodData) {
-    try {
-      const meal = await Meal.findOne({ _id: mealId, userId });
-      if (!meal) {
-        throw new Error('Meal not found');
-      }
-
-      const food = await Food.findById(foodData.foodId);
-      if (!food) {
-        throw new Error('Food not found');
-      }
-
-      meal.foods.push(foodData);
-      await meal.save();
-
-      return meal;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  static async removeFoodFromMeal(mealId, userId, foodId) {
-    try {
-      const meal = await Meal.findOne({ _id: mealId, userId });
-      if (!meal) {
-        throw new Error('Meal not found');
-      }
-
-      meal.foods = meal.foods.filter(food => food.foodId.toString() !== foodId);
-      await meal.save();
-
-      return meal;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  static async getDailyNutrients(userId, date) {
-    try {
-      const startOfDay = new Date(date);
-      startOfDay.setHours(0, 0, 0, 0);
-      
-      const endOfDay = new Date(date);
-      endOfDay.setHours(23, 59, 59, 999);
-
-      const meals = await Meal.find({
-        userId,
-        date: {
-          $gte: startOfDay,
-          $lte: endOfDay
-        }
+      throw createError({
+        statusCode: error.statusCode || 500,
+        message: error.message || 'Öğün oluşturulurken bir hata oluştu'
       });
-
-      return meals.reduce((totals, meal) => {
-        const mealNutrients = meal.totalNutrients;
-        return {
-          energy: totals.energy + mealNutrients.energy.value,
-          protein: totals.protein + mealNutrients.protein.value,
-          carbohydrate: totals.carbohydrate + mealNutrients.carbohydrate.value,
-          fat: totals.fat + mealNutrients.fat.value
-        };
-      }, { energy: 0, protein: 0, carbohydrate: 0, fat: 0 });
-    } catch (error) {
-      throw new Error(`Error calculating daily nutrients: ${error.message}`);
     }
   }
 
-  static calculateTotalNutrients(foods, mealFoods) {
-    const totalNutrients = {
-      energy: { value: 0, unit: 'kcal' },
-      protein: { value: 0, unit: 'g' },
-      fat: { value: 0, unit: 'g' },
-      carbohydrate: { value: 0, unit: 'g' },
-      fiber: { value: 0, unit: 'g' }
-    };
+  async getUserMeals(event) {
+    try {
+      // Find meals and populate food details
+      const meals = await Meal.find({ userId: event.context.auth.user._id })
+        .populate({
+          path: 'foods.foodId',
+          model: 'Food',
+          select: 'name nutrients category portionSize servingSize image'
+        })
+        .sort({ date: -1 });
+  
+      return { meals };
+    } catch (error) {
+      throw createError({
+        statusCode: error.statusCode || 500,
+        message: error.message || 'Öğünler getirilirken bir hata oluştu'
+      });
+    }
+  }
 
-    mealFoods.forEach(mealFood => {
-      const food = foods.find(f => f._id.toString() === mealFood.foodId.toString());
-      if (food) {
-        const multiplier = mealFood.quantity / 100; // Convert to percentage of 100g
-        
-        Object.keys(totalNutrients).forEach(nutrient => {
-          if (food.nutrients[nutrient]) {
-            totalNutrients[nutrient].value += food.nutrients[nutrient].value * multiplier;
-          }
+  async updateMeal(event) {
+    try {
+      const session = await getServerSession(event);
+      const user = session.user;
+      const mealId = event.context.params.id;
+      const updateData = await readBody(event);
+  
+      // Find and update meal
+      const meal = await Meal.findOneAndUpdate(
+        {
+          _id: mealId,
+          userId: user._id
+        },
+        { $set: updateData },
+        { new: true }
+      ).populate('foods.food');
+  
+      if (!meal) {
+        throw createError({
+          statusCode: 404,
+          message: 'Öğün bulunamadı'
         });
       }
-    });
-
-    // Round all values to 1 decimal place
-    Object.keys(totalNutrients).forEach(nutrient => {
-      totalNutrients[nutrient].value = Math.round(totalNutrients[nutrient].value * 10) / 10;
-    });
-
-    return totalNutrients;
+  
+      return { meal };
+    } catch (error) {
+      throw createError({
+        statusCode: error.statusCode || 500,
+        message: error.message || 'Öğün güncellenirken bir hata oluştu'
+      });
+    }
   }
+
+  async deleteMeal(event) {
+    try {
+      const session = await getServerSession(event);
+      const user = session.user;
+      const mealId = event.context.params.id;
+  
+      // Find and delete meal
+      const meal = await Meal.findOneAndDelete({
+        _id: mealId,
+        userId: user._id // id yerine _id kullanıyoruz
+      });
+  
+      if (!meal) {
+        throw createError({
+          statusCode: 404,
+          message: ErrorTypes.MEAL_NOT_FOUND
+        });
+      }
+  
+      return {
+        success: true,
+        message: 'Öğün başarıyla silindi'
+      };
+    } catch (error) {
+      throw createError({
+        statusCode: error.statusCode || 500,
+        message: error.message || ErrorTypes.INTERNAL_SERVER_ERROR
+      });
+    }
+  }
+
+  async getMealById(event) {
+    try {
+      const session = await getServerSession(event);
+      const user = session.user;
+      const mealId = event.context.params.id;
+  
+      // Find meal
+      const meal = await Meal.findOne({
+        _id: mealId,
+        userId: user._id
+      }).populate('foods.food');
+  
+      if (!meal) {
+        throw createError({
+          statusCode: 404,
+          message: 'Öğün bulunamadı'
+        });
+      }
+  
+      return { meal };
+    } catch (error) {
+      throw createError({
+        statusCode: error.statusCode || 500,
+        message: error.message || ErrorTypes.INTERNAL_SERVER_ERROR
+      });
+    }
+  }
+
+  async getRecentMeals(event){
+    try {
+      // Kullanıcı oturumunu kontrol et
+      const session = await getServerSession(event);
+      if (!session) {
+        throw createError({
+          statusCode: 401,
+          message: 'Unauthorized'
+        });
+      }
+  
+      // Son 5 öğünü getir
+      const meals = await Meal.find({ userId: session.user._id }) // id yerine _id kullanıyoruz
+        .sort({ date: -1 })
+        .limit(5)
+        .populate({
+          path: 'foods.foodId',
+          model: 'Food',
+          select: 'name category nutrients calories protein carbs fat'
+        });
+  
+      // Veriyi istemcinin beklediği formata dönüştür
+      const formattedMeals = meals.map(meal => ({
+        _id: meal._id,
+        userId: meal.userId,
+        date: meal.date,
+        mealType: meal.type,
+        foods: meal.foods.map(food => ({
+          _id: food._id,
+          food: {
+            _id: food.foodId._id,
+            name: {
+              tr: food.foodId.name?.tr || food.foodId.name || ''
+            },
+            category: food.foodId.category || {},
+            nutrients: {
+              energy: {
+                value: food.foodId.calories || food.foodId.nutrients?.energy?.value || 0,
+                unit: 'kcal'
+              },
+              protein: {
+                value: food.foodId.protein || food.foodId.nutrients?.protein?.value || 0,
+                unit: 'g'
+              },
+              carbohydrates: {
+                value: food.foodId.carbs || food.foodId.nutrients?.carbohydrates?.value || 0,
+                unit: 'g'
+              },
+              fat: {
+                value: food.foodId.fat || food.foodId.nutrients?.fat?.value || 0,
+                unit: 'g'
+              }
+            }
+          },
+          quantity: food.quantity
+        })),
+        totalNutrients: meal.totalNutrients,
+        notes: meal.notes,
+        tags: meal.tags,
+        createdAt: meal.createdAt,
+        updatedAt: meal.updatedAt
+      }));
+  
+      return formattedMeals;
+    } catch (error) {
+      console.error('Get recent meals error:', error);
+      throw createError({
+        statusCode: 500,
+        message: 'Error getting recent meals'
+      });
+    }
+  }
+    
 }
 
-export default MealService;
+const mealService = new MealService();
+
+export default mealService;

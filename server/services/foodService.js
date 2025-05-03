@@ -2,7 +2,27 @@ import Food from '../models/Food';
 import FoodDataService from './foodDataService';
 import createError from 'http-errors';
 import { validateFoodId, validateCreateFood, validateUpdateFood } from '../validations/foodValidation';
-import { readBody } from 'h3';
+import { readBody, getQuery } from 'h3';
+
+// server/api/foods/uploadPhoto.post.js
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { randomUUID } from 'crypto';
+import multer from 'multer';
+import { promisify } from 'util';
+
+// S3 istemcisini yapılandır
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION || 'eu-central-1', // Varsayılan bölge
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
+
+// Multer yapılandırması
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+const uploadMiddleware = promisify(upload.single('photo'));
 
 class FoodService {
   constructor() {
@@ -10,8 +30,9 @@ class FoodService {
   }
 
   // Besin ekle
-  async addFood(foodData) {
+  async addFood(event) {
     try {
+      const foodData = await readBody(event);
       // Zod validasyonu yap
       const validationResult = validateCreateFood(foodData);
       if (!validationResult.success) {
@@ -61,7 +82,8 @@ class FoodService {
   }
   
   // Besin detayını getir
-  async getFoodById(id) {
+  async getFoodById(event) {
+      const id = event.context.params.id;
       // Zod ile ID validasyonu
       const validationResult = validateFoodId(id);
       if (!validationResult.success) {
@@ -94,43 +116,46 @@ class FoodService {
       }
   }
   // Besin sil
-  async deleteFood(id) {
-      // Zod ile ID validasyonu
-      const validationResult = validateFoodId(id);
-      if (!validationResult.success) {
+  async deleteFood(event) {
+
+    const id = event.context.params.id;
+    // Zod ile ID validasyonu
+    const validationResult = validateFoodId(id);
+    if (!validationResult.success) {
+      throw createError({
+        statusCode: 400,
+        message: 'Geçersiz besin ID formatı',
+        validationErrors: validationResult.error
+      });
+    }
+
+    try { 
+      const deleted = await Food.findByIdAndDelete(id);
+      if(!deleted) {
         throw createError({
-          statusCode: 400,
-          message: 'Geçersiz besin ID formatı',
-          validationErrors: validationResult.error
+          statusCode: 404,
+          message: 'Besin bulunamadı'
         });
       }
-
-      try {
-        const deleted = await Food.findByIdAndDelete(id);
-        if(!deleted) {
-          throw createError({
-            statusCode: 404,
-            message: 'Besin bulunamadı'
-          });
-        }
-        return{
-          success: true,
-          message: 'Besin silindi',
-          deletedId: id
-        };
-      } catch (error) {
-        // Eğer zaten bir HTTP error ise tekrar fırlat
-        if (error.statusCode && error.expose) {
-          throw error;
-        }
-        throw createError({
-          statusCode: 500,
+      return{
+        success: true,
+        message: 'Besin silindi',
+        deletedId: id
+      };
+    } catch (error) {
+      // Eğer zaten bir HTTP error ise tekrar fırlat
+      if (error.statusCode && error.expose) {
+        throw error;
+      }
+      throw createError({
+        statusCode: 500,
           message: 'Besin silme başarısız'
         });
-      }
+    }
   }
   // Besin güncelle
-  async updateFood(id, event) {
+  async updateFood(event) {
+    const id = event.context.params.id;
     // Zod ile ID validasyonu
     const idValidationResult = validateFoodId(id);
     if (!idValidationResult.success) {
@@ -201,12 +226,138 @@ class FoodService {
         });
     }
   }
-  // Besin ara
+
+  // Besin listesini getir
+  async getFoods(event) {
+    try {
+      const query = getQuery(event);
+      const page = parseInt(query.page) || 1;
+      const limit = parseInt(query.limit) || 20;
+      const search = query.search || '';
+      const category = query.category || '';
+      const sortField = query.sortField || 'name.tr';
+      const sortOrder = query.sortOrder === 'desc' ? -1 : 1;
+
+      // Build query
+      const dbQuery = {};
+      if (search) {
+        dbQuery['$or'] = [
+          { 'name.tr': { $regex: search, $options: 'i' } },
+          { 'name.en': { $regex: search, $options: 'i' } }
+        ];
+      }
+      if (category) {
+        dbQuery.category = category;
+      }
+
+      // Get total count for pagination
+      const total = await Food.countDocuments(dbQuery);
+
+      // Get paginated results
+      const foods = await Food.find(dbQuery)
+        .sort({ [sortField]: sortOrder })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean();
+
+      // Get category statistics
+      const categories = await Food.aggregate([
+        { $group: { 
+          _id: '$category', 
+          count: { $sum: 1 },
+          avgCalories: { $avg: '$nutrients.energy.value' },
+          avgProtein: { $avg: '$nutrients.protein.value' }
+        }},
+        { $sort: { count: -1 } }
+      ]);
+
+      // Return response
+      return {
+        foods,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        },
+        stats: {
+          categories,
+          total
+        }
+      };
+    } catch (error) {
+      console.error('Error fetching foods:', error);
+      throw createError({
+        statusCode: 500,
+        message: 'Internal server error'
+      });
+    }
+  }
+
+  // Besin ara (GET metodu için)
+  async searchFoodsGet(event) {
+    try {
+      const { q } = getQuery(event);
+
+      if (!q) {
+        return {
+          foods: []
+        };
+      }
+
+      // Case-insensitive arama yapalım
+      const foods = await Food.find({
+        name: { $regex: q, $options: 'i' }
+      })
+      .select('name calories protein carbs fat')
+      .limit(10);
+
+      return {
+        foods
+      };
+    } catch (error) {
+      console.error('Food search error:', error);
+      throw createError({
+        statusCode: 500,
+        message: 'Besin arama sırasında bir hata oluştu'
+      });
+    }
+  }
+
+  // Besin ara (POST metodu için)
+  async searchFoodsPost(event) {
+    try {
+      const body = await readBody(event);
+      
+      if (!body.query) {
+        throw createError({
+          statusCode: 400,
+          message: 'Arama terimi gerekli'
+        });
+      }
+
+      const foods = await Food.find({
+        $or: [
+          { 'name.tr': { $regex: body.query, $options: 'i' } },
+          { name: { $regex: body.query, $options: 'i' } }
+        ]
+      }).limit(10);
+
+      return { foods };
+    } catch (error) {
+      throw createError({
+        statusCode: error.statusCode || 500,
+        message: error.message || 'Server error'
+      });
+    }
+  }
+
+  // Besin ara (Genel arama metodu)
   async searchFoods(query = '', pageSize = 25, pageNumber = 1) {
     try {
       const skip = (pageNumber - 1) * pageSize;
-      
       let searchQuery = {};
+      
       if (query && query.trim()) {
         searchQuery = {
           $or: [
@@ -315,6 +466,64 @@ class FoodService {
     }
     
     return 'other';
+  }
+
+  async uploadPhoto(event){
+    try {
+      // Dosyayı al
+      await uploadMiddleware(event.node.req, event.node.res);
+      const file = event.node.req.file;
+      
+      if (!file) {
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ error: 'Dosya bulunamadı' }),
+        };
+      }
+  
+      // Dosya adını oluştur
+      const fileExtension = file.originalname.split('.').pop();
+      const fileName = `foods/${randomUUID()}.${fileExtension}`;
+      const bucketName = process.env.AWS_BUCKET_NAME || 'nutpbucket';
+  
+      // S3'e yükleme komutu
+      const putCommand = new PutObjectCommand({
+        Bucket: bucketName,
+        Key: fileName,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+        // ACL kaldırıldı - bucket ACL'lere izin vermiyor
+      });
+  
+      // S3'e yükle
+      await s3Client.send(putCommand);
+  
+      // Dosya URL'sini oluştur
+      const region = process.env.AWS_REGION || 'eu-central-1';
+      
+      // AWS S3 için doğru URL formatını kullan
+      // eu-north-1 bölgesi için özel format
+      let fileUrl;
+      if (region === 'eu-north-1') {
+        // Stockholm bölgesi için doğru format
+        fileUrl = `https://s3.eu-north-1.amazonaws.com/${bucketName}/${fileName}`;
+      } else {
+        fileUrl = `https://s3.${region}.amazonaws.com/${bucketName}/${fileName}`;
+      }
+      
+      console.log('Yüklenen dosya URL:', fileUrl);
+      console.log('Bucket:', bucketName, 'Region:', region, 'FileName:', fileName);
+  
+      return {
+        url: fileUrl
+      };
+    } catch (error) {
+      console.error('Fotoğraf yükleme hatası:', error);
+      return {
+        statusCode: 500,
+        error: 'Fotoğraf yüklenirken bir hata oluştu'
+      };
+    }
   }
 }
 

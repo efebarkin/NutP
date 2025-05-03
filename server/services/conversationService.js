@@ -2,6 +2,7 @@ import Conversation from '../models/Conversation.js';
 import Message from '../models/Message.js';
 import User from '../models/User.js';
 import { getUserConversationsKey, setAsync, getAsync, delAsync } from '../utils/redis.js';
+import { getQuery } from 'h3';
 
 /**
  * Konuşma servisi - Konuşmaların oluşturulması ve yönetilmesi için
@@ -55,41 +56,62 @@ const conversationService = {
   
   /**
    * Kullanıcının tüm konuşmalarını getirir
-   * @param {String} userId - Kullanıcı ID'si
+   * @param {Object} event - H3 event nesnesi
    * @returns {Promise<Array>} - Konuşmalar dizisi
    */
-  async getUserConversations(userId) {
+  async getUserConversations(event) {
     try {
-      // Redis'ten önbelleklenmiş konuşmaları kontrol et
-      const cacheKey = getUserConversationsKey(userId);
-      const cachedConversations = await getAsync(cacheKey);
-      
-      if (cachedConversations) {
-        return JSON.parse(cachedConversations);
+      // Kimlik doğrulama kontrolü
+      const user = event.context.user;
+      if (!user) {
+        return {
+          statusCode: 401,
+          body: { error: 'Unauthorized' }
+        };
       }
       
-      // MongoDB'den konuşmaları getir
-      const conversations = await Conversation.find({
-        participants: userId,
-        isActive: true
-      })
-      .populate({
-        path: 'participants',
-        select: 'name avatar isOnline lastSeen'
-      })
-      .populate({
-        path: 'lastMessage',
-        select: 'content createdAt read sender'
-      })
-      .sort({ updatedAt: -1 });
+      // Sayfalama parametrelerini al
+      const query = getQuery(event);
+      const limit = parseInt(query.limit) || 10;
+      const skip = parseInt(query.skip) || 0;
       
-      // Konuşmaları Redis'e önbelleğe al (1 saat)
-      await setAsync(cacheKey, JSON.stringify(conversations), 3600);
+      // Redis'ten önbelleklenmiş konuşmaları kontrol et
+      const cacheKey = getUserConversationsKey(user._id);
+      const cachedConversations = await getAsync(cacheKey);
       
-      return conversations;
+      let conversations;
+      if (cachedConversations) {
+        conversations = JSON.parse(cachedConversations);
+      } else {
+        // MongoDB'den konuşmaları getir
+        conversations = await Conversation.find({
+          participants: user._id, // id yerine _id kullanıyoruz
+          isActive: true
+        })
+        .populate({
+          path: 'participants',
+          select: 'name avatar isOnline lastSeen'
+        })
+        .populate({
+          path: 'lastMessage',
+          select: 'content createdAt read sender'
+        })
+        .sort({ updatedAt: -1 });
+        
+        // Konuşmaları Redis'e önbelleğe al (1 saat)
+        await setAsync(cacheKey, JSON.stringify(conversations), 3600);
+      }
+      
+      // Sayfalama uygula
+      const limitedConversations = conversations.slice(skip, skip + limit);
+      
+      return limitedConversations;
     } catch (error) {
       console.error('Kullanıcı konuşmalarını getirme hatası:', error);
-      throw new Error('Konuşmalar getirilemedi');
+      return {
+        statusCode: 500,
+        body: { error: 'Internal server error', message: error.message }
+      };
     }
   },
   

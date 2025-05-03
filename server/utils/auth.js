@@ -213,35 +213,6 @@ export const defineAuthenticatedHandler = (handler) => {
   });
 };
 
-// Admin rolü gerektiren handler tanımlama
-export const defineAdminHandler = (handler) => {
-  return defineEventHandler(async (event) => {
-    const session = await getServerSession(event);
-    if (!session || !session.user) {
-      throw createError({
-        statusCode: 401,
-        message: 'Yetkilendirme gerekli'
-      });
-    }
-    
-    if (!hasRole(session.user, 'admin')) {
-      throw createError({
-        statusCode: 403,
-        message: 'Admin yetkisi gerekli'
-      });
-    }
-    
-    event.context = event.context || {};
-    event.context.auth = { 
-      user: session.user,
-      authenticated: true,
-      timestamp: Date.now()
-    };
-    
-    return handler(event);
-  });
-};
-
 // Belirli rolleri gerektiren handler tanımlama
 export const defineRoleHandler = (allowedRoles, handler) => {
   return defineEventHandler(async (event) => {

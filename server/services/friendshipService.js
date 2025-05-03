@@ -1,5 +1,7 @@
 import Friendship from '../models/Friendship.js';
+import { defineEventHandler, getHeaders, createError, getCookie, parseCookies } from 'h3';
 import User from '../models/User.js';
+import jwt from 'jsonwebtoken';
 import conversationService from './conversationService.js';
 
 /**
@@ -12,67 +14,89 @@ const friendshipService = {
    * @param {String} recipientId - İstek alan kullanıcı ID'si
    * @returns {Promise<Object>} - Oluşturulan arkadaşlık isteği
    */
-  async sendFriendRequest(requesterId, recipientId) {
+  async sendFriendRequest(event) {
     try {
-      // Kullanıcıların kendilerine istek göndermesini engelle
-      if (requesterId === recipientId) {
-        throw new Error('Kendinize arkadaşlık isteği gönderemezsiniz');
+      // Token'ı farklı kaynaklardan almayı dene
+      let token = null;
+      
+      // 1. Authorization header'dan token'ı al
+      const authHeader = getHeaders(event).authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+        console.log('Token Authorization header\'dan alındı');
       }
       
-      // Kullanıcıların var olup olmadığını kontrol et
-      const [requester, recipient] = await Promise.all([
-        User.findById(requesterId),
-        User.findById(recipientId)
-      ]);
-      
-      if (!requester || !recipient) {
-        throw new Error('Kullanıcı bulunamadı');
-      }
-      
-      // Zaten bir arkadaşlık isteği var mı kontrol et
-      const existingFriendship = await Friendship.findOne({
-        $or: [
-          { requester: requesterId, recipient: recipientId },
-          { requester: recipientId, recipient: requesterId }
-        ]
-      });
-      
-      if (existingFriendship) {
-        if (existingFriendship.status === 'pending') {
-          throw new Error('Zaten bekleyen bir arkadaşlık isteği var');
-        } else if (existingFriendship.status === 'accepted') {
-          throw new Error('Bu kullanıcı zaten arkadaşınız');
-        } else if (existingFriendship.status === 'blocked') {
-          throw new Error('Bu kullanıcı ile arkadaşlık isteği gönderemezsiniz');
+      // 2. auth_token cookie'sinden token'ı al
+      if (!token) {
+        token = getCookie(event, 'auth_token');
+        if (token) {
+          console.log('Token auth_token cookie\'den alındı');
         }
-        
-        // Reddedilmiş bir istek varsa, durumunu güncelle
-        existingFriendship.status = 'pending';
-        existingFriendship.requester = requesterId;
-        existingFriendship.recipient = recipientId;
-        await existingFriendship.save();
-        
-        return existingFriendship;
       }
       
-      // Yeni arkadaşlık isteği oluştur
-      const friendship = new Friendship({
-        requester: requesterId,
-        recipient: recipientId,
+      // 3. socket_token cookie'sinden token'ı al
+      if (!token) {
+        token = getCookie(event, 'socket_token');
+        if (token) {
+          console.log('Token socket_token cookie\'den alındı');
+        }
+      }
+      
+      // 4. Tüm cookie'leri kontrol et
+      if (!token) {
+        const cookies = parseCookies(event);
+        console.log('Mevcut cookie\'ler:', Object.keys(cookies));
+      }
+      
+      // Hala token yoksa hata döndür
+      if (!token) {
+        console.error('Token bulunamadı, tüm kaynaklar kontrol edildi');
+        return createError({
+          statusCode: 401,
+          message: 'Unauthorized - Token not provided'
+        });
+      }
+      
+      console.log('Token bulundu:', !!token);
+      
+      // Token'ı doğrula
+      let decoded;
+      try {
+        decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+      } catch (error) {
+        console.error('Token doğrulama hatası:', error);
+        return createError({
+          statusCode: 401,
+          message: 'Unauthorized - Invalid token'
+        });
+      }
+      
+      if (!decoded || !decoded.userId) {
+        console.error('Geçersiz token içeriği:', decoded);
+        return createError({
+          statusCode: 401,
+          message: 'Unauthorized - Invalid token payload'
+        });
+      }
+      
+      console.log('Token doğrulandı, userId:', decoded.userId);
+      
+      // Kullanıcının gönderdiği arkadaşlık isteklerini getir
+      const sentRequests = await Friendship.find({
+        requester: decoded.userId,
         status: 'pending'
-      });
+      }).populate('recipient', 'name email avatar status lastSeen customStatus');
       
-      await friendship.save();
-      
-      // Alıcının arkadaşlık istekleri listesini güncelle
-      await User.findByIdAndUpdate(recipientId, {
-        $addToSet: { friendRequests: friendship._id }
-      });
-      
-      return friendship;
+      return {
+        success: true,
+        sentRequests: sentRequests || []
+      };
     } catch (error) {
-      console.error('Arkadaşlık isteği gönderme hatası:', error);
-      throw new Error(error.message || 'Arkadaşlık isteği gönderilemedi');
+      console.error('Gönderilen arkadaşlık istekleri getirilirken hata:', error);
+      return createError({
+        statusCode: 500,
+        message: 'Internal Server Error'
+      });
     }
   },
   
@@ -299,31 +323,89 @@ const friendshipService = {
    * @param {String} userId - Kullanıcı ID'si
    * @returns {Promise<Array>} - Arkadaşlık istekleri dizisi
    */
-  async getFriendRequests(userId) {
+  async getFriendRequests(event) {
     try {
-      const user = await User.findById(userId)
-        .populate({
-          path: 'friendRequests',
-          populate: {
-            path: 'requester',
-            select: 'name avatar'
-          }
-        });
+      // Token'ı farklı kaynaklardan almayı dene
+      let token = null;
       
-      if (!user) {
-        throw new Error('Kullanıcı bulunamadı');
+      // 1. Authorization header'dan token'ı al
+      const authHeader = getHeaders(event).authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+        console.log('Token Authorization header\'dan alındı');
       }
       
-      // Sadece bekleyen istekleri filtrele
-      const pendingRequests = user.friendRequests.filter(
-        request => request.status === 'pending' && 
-                  request.recipient.toString() === userId
-      );
+      // 2. auth_token cookie'sinden token'ı al
+      if (!token) {
+        token = getCookie(event, 'auth_token');
+        if (token) {
+          console.log('Token auth_token cookie\'den alındı');
+        }
+      }
       
-      return pendingRequests;
+      // 3. socket_token cookie'sinden token'ı al
+      if (!token) {
+        token = getCookie(event, 'socket_token');
+        if (token) {
+          console.log('Token socket_token cookie\'den alındı');
+        }
+      }
+      
+      // 4. Tüm cookie'leri kontrol et
+      if (!token) {
+        const cookies = parseCookies(event);
+        console.log('Mevcut cookie\'ler:', Object.keys(cookies));
+      }
+      
+      // Hala token yoksa hata döndür
+      if (!token) {
+        console.error('Token bulunamadı, tüm kaynaklar kontrol edildi');
+        return createError({
+          statusCode: 401,
+          message: 'Unauthorized - Token not provided'
+        });
+      }
+      
+      console.log('Token bulundu:', !!token);
+      
+      // Token'ı doğrula
+      let decoded;
+      try {
+        decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+      } catch (error) {
+        console.error('Token doğrulama hatası:', error);
+        return createError({
+          statusCode: 401,
+          message: 'Unauthorized - Invalid token'
+        });
+      }
+      
+      if (!decoded || !decoded.userId) {
+        console.error('Geçersiz token içeriği:', decoded);
+        return createError({
+          statusCode: 401,
+          message: 'Unauthorized - Invalid token payload'
+        });
+      }
+      
+      console.log('Token doğrulandı, userId:', decoded.userId);
+      
+      // Kullanıcıya gelen arkadaşlık isteklerini getir
+      const requests = await Friendship.find({
+        recipient: decoded.userId,
+        status: 'pending'
+      }).populate('requester', 'name email avatar status lastSeen customStatus');
+      
+      return {
+        success: true,
+        requests: requests || []
+      };
     } catch (error) {
-      console.error('Arkadaşlık istekleri getirme hatası:', error);
-      throw new Error('Arkadaşlık istekleri getirilemedi');
+      console.error('Arkadaşlık istekleri getirilirken hata:', error);
+      return createError({
+        statusCode: 500,
+        message: 'Internal Server Error'
+      });
     }
   },
   
@@ -332,22 +414,97 @@ const friendshipService = {
    * @param {String} userId - Kullanıcı ID'si
    * @returns {Promise<Array>} - Arkadaşlar dizisi
    */
-  async getFriends(userId) {
+  async getFriends(event) {
     try {
-      const user = await User.findById(userId)
-        .populate({
-          path: 'friends',
-          select: 'name avatar isOnline lastSeen'
-        });
+      // Token'ı farklı kaynaklardan almayı dene
+      let token = null;
       
-      if (!user) {
-        throw new Error('Kullanıcı bulunamadı');
+      // 1. Authorization header'dan token'ı al
+      const authHeader = getHeaders(event).authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+        console.log('Token Authorization header\'dan alındı');
       }
       
-      return user.friends;
+      // 2. auth_token cookie'sinden token'ı al
+      if (!token) {
+        token = getCookie(event, 'auth_token');
+        if (token) {
+          console.log('Token auth_token cookie\'den alındı');
+        }
+      }
+      
+      // 3. socket_token cookie'sinden token'ı al
+      if (!token) {
+        token = getCookie(event, 'socket_token');
+        if (token) {
+          console.log('Token socket_token cookie\'den alındı');
+        }
+      }
+      
+      // 4. Tüm cookie'leri kontrol et
+      if (!token) {
+        const cookies = parseCookies(event);
+        console.log('Mevcut cookie\'ler:', Object.keys(cookies));
+      }
+      
+      // Hala token yoksa hata döndür
+      if (!token) {
+        console.error('Token bulunamadı, tüm kaynaklar kontrol edildi');
+        return createError({
+          statusCode: 401,
+          message: 'Unauthorized - Token not provided'
+        });
+      }
+      
+      console.log('Token bulundu:', !!token);
+      
+      // Token'ı doğrula
+      let decoded;
+      try {
+        decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+      } catch (error) {
+        console.error('Token doğrulama hatası:', error);
+        return createError({
+          statusCode: 401,
+          message: 'Unauthorized - Invalid token'
+        });
+      }
+      
+      if (!decoded || !decoded.userId) {
+        console.error('Geçersiz token içeriği:', decoded);
+        return createError({
+          statusCode: 401,
+          message: 'Unauthorized - Invalid token payload'
+        });
+      }
+      
+      console.log('Token doğrulandı, userId:', decoded.userId);
+      
+      // Kullanıcıyı bul ve arkadaşlarını getir
+      const user = await User.findById(decoded.userId)
+        .populate('friends', 'name email avatar status lastSeen customStatus')
+        .lean();
+      
+      if (!user) {
+        console.error('Kullanıcı bulunamadı, userId:', decoded.userId);
+        return createError({
+          statusCode: 404,
+          message: 'User not found'
+        });
+      }
+      
+      // Arkadaşları döndür
+      return {
+        success: true,
+        friends: user.friends || []
+      };
     } catch (error) {
-      console.error('Arkadaşları getirme hatası:', error);
-      throw new Error('Arkadaşlar getirilemedi');
+      console.error('Arkadaşlar getirilirken hata:', error);
+      return createError({
+        statusCode: 500,
+        message: 'Internal Server Error'
+      });
     }
   },
   

@@ -245,6 +245,66 @@ class AuthService {
           }
     }
 
+    async updatePassword(event){
+        try {
+            // 1) URL'den kullanıcı ID'sini ve body'den şifre bilgilerini al
+            const { currentPassword, newPassword, passwordConfirm } = await readBody(event);
+            
+            // Giriş yapmış kullanıcının bilgilerini al
+            const authUser = event.context.auth.user;
+            
+            // Kullanıcının kendi şifresini değiştirdiğinden emin ol
+            if (authUser._id.toString() !== authUser._id && !authUser.role.includes('admin')) {
+              throw createError({
+                statusCode: 403,
+                message: 'Başka bir kullanıcının şifresini değiştirme yetkiniz yok'
+              });
+            }
+            
+            // 2) Kullanıcıyı bul (password alanını da dahil et)
+            const user = await User.findById(authUser._id).select('+password');
+                if (!user) {
+                  throw createError({
+                    statusCode: 404,
+                    message: 'Kullanıcı bulunamadı'
+                  });
+                }
+                
+            // 3) Mevcut şifre doğru mu kontrol et
+            if (!(await user.verifyPassword(currentPassword))) {
+              throw createError({
+                statusCode: 401,
+                message: 'Mevcut şifre yanlış'
+              });
+            }
+            
+            // 4) Yeni şifre ve onay şifresi eşleşiyor mu kontrol et
+            if (newPassword !== passwordConfirm) {
+              throw createError({
+                statusCode: 400,
+                message: 'Yeni şifre ve onay şifresi eşleşmiyor'
+              });
+            }
+            
+            // 5) Şifre güncelleme
+            user.password = newPassword;
+            user.passwordConfirm = passwordConfirm;
+            await user.save();
+            
+            // 6) Kullanıcıya başarılı yanıt dön
+            return {
+              success: true,
+              message: 'Şifre başarıyla güncellendi'
+            };
+          } catch (error) {
+            console.error('Şifre güncelleme hatası:', error);
+            throw createError({
+              statusCode: error.statusCode || 500,
+              message: error.message || 'Şifre güncellenirken bir hata oluştu'
+            });
+          }
+    }
+
     async session(event){
         try {
             // Get token from cookie

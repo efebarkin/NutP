@@ -88,15 +88,18 @@ class UserService {
   async getAllUsers() {
     try {
       const users = await User.find().select('-password -__v');
-      return users;
+      return {
+        users: users
+      };
     } catch (error) {
       console.error('Kullanıcılar getirme hatası:', error);
       throw error;
     }
   }
 
-  async deleteUser(userId) {
+  async deleteUser(event) {
     try {
+      const userId = event.context.params.userId;
       const user = await User.findByIdAndDelete(userId);
       return user;
     } catch (error) {

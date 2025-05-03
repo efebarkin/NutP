@@ -4,5 +4,5 @@ import { defineAuthenticatedHandler } from '~/server/utils/auth';
 
 export default defineAuthenticatedHandler(async (event) => {
   verifyCsrfToken(event);
-  return await authService.refreshToken(event);
+  return authService.refreshToken(event);
 });
