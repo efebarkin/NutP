@@ -1,6 +1,6 @@
 import { defineEventHandler, readBody } from 'h3';
 import { ErrorTypes } from '~/server/utils/error';
-import { Meal } from '~/server/models/meal';
+import { Meal } from '~/server/models/Meal';
 
 export default defineEventHandler(async (event) => {
   try {

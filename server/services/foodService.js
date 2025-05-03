@@ -1,8 +1,8 @@
 import Food from '../models/Food';
 import FoodDataService from './foodDataService';
-import User from '../models/User';
 import createError from 'http-errors';
-import mongoose from 'mongoose';
+import { validateFoodId, validateCreateFood, validateUpdateFood } from '../validations/foodValidation';
+import { readBody } from 'h3';
 
 class FoodService {
   constructor() {
@@ -12,8 +12,21 @@ class FoodService {
   // Besin ekle
   async addFood(foodData) {
     try {
+      // Zod validasyonu yap
+      const validationResult = validateCreateFood(foodData);
+      if (!validationResult.success) {
+        throw createError({
+          statusCode: 400,
+          message: 'Validasyon hatası',
+          validationErrors: validationResult.error
+        });
+      }
+
+      // Validasyondan geçen veriyi kullan
+      const validatedData = validationResult.data;
+      
       // Yeni besin oluştur
-      const newFood = new Food(foodData);
+      const newFood = new Food(validatedData);
       
       // Besini kaydet
       await newFood.save();
@@ -25,6 +38,11 @@ class FoodService {
       };
     } catch (error) {
       console.error('Besin ekleme hatası:', error);
+      
+      // Zaten HTTP hatası ise doğrudan fırlat
+      if (error.statusCode && error.expose) {
+        throw error;
+      }
       
       // Mongoose validation hatası kontrolü
       if (error.name === 'ValidationError') {
@@ -44,13 +62,16 @@ class FoodService {
   
   // Besin detayını getir
   async getFoodById(id) {
-
-      if(!mongoose.Types.ObjectId.isValid(id)) {
+      // Zod ile ID validasyonu
+      const validationResult = validateFoodId(id);
+      if (!validationResult.success) {
         throw createError({
           statusCode: 400,
-          message: 'Geçersiz besin ID'
+          message: 'Geçersiz besin ID formatı',
+          validationErrors: validationResult.error
         });
       }
+
       try {
         //Lean() metodu sadece veri alır, modelleme yapmaz
         const food = await Food.findById(id).lean();
@@ -59,7 +80,7 @@ class FoodService {
               statusCode: 404,
               message: 'Besin bulunamadı'
           });
-      }
+        }
         return food;
       } catch (error) {
         // Eğer zaten bir HTTP error ise tekrar fırlat
@@ -74,12 +95,16 @@ class FoodService {
   }
   // Besin sil
   async deleteFood(id) {
-      if(!mongoose.Types.ObjectId.isValid(id)) {
+      // Zod ile ID validasyonu
+      const validationResult = validateFoodId(id);
+      if (!validationResult.success) {
         throw createError({
           statusCode: 400,
-          message: 'Geçersiz besin ID'
+          message: 'Geçersiz besin ID formatı',
+          validationErrors: validationResult.error
         });
       }
+
       try {
         const deleted = await Food.findByIdAndDelete(id);
         if(!deleted) {
@@ -106,15 +131,33 @@ class FoodService {
   }
   // Besin güncelle
   async updateFood(id, event) {
-    if(!mongoose.Types.ObjectId.isValid(id)) {
+    // Zod ile ID validasyonu
+    const idValidationResult = validateFoodId(id);
+    if (!idValidationResult.success) {
       throw createError({
         statusCode: 400,
-        message: 'Geçersiz besin ID'
+        message: 'Geçersiz besin ID formatı',
+        validationErrors: idValidationResult.error
       });
     }
+
     try {
       // Request body'den gelen verileri al
       const body = await readBody(event);
+      
+      // Zod ile güncelleme verisi validasyonu
+      const validationResult = validateUpdateFood(body);
+      if (!validationResult.success) {
+        throw createError({
+          statusCode: 400,
+          message: 'Validasyon hatası',
+          validationErrors: validationResult.error
+        });
+      }
+      
+      // Validasyondan geçen veriyi kullan
+      const validatedData = validationResult.data;
+      
       // Besinin var olup olmadığını kontrol et
       const existingFood = await Food.findById(id);
       if(!existingFood) {
@@ -123,12 +166,11 @@ class FoodService {
               message: 'Güncellenecek besin bulunamadı'
           });
       }
-      // photoUrl alanını kontrol et ve güncellemeye dahil et
-      const updateData = { ...body };
+      
       // Besini güncelle
       const updatedFood = await Food.findByIdAndUpdate(
           id,
-          { $set: updateData },
+          { $set: validatedData },
           { new: true, runValidators: true }
       ).lean();
 
@@ -140,6 +182,11 @@ class FoodService {
     } catch (error) {
         console.error('Besin güncelleme hatası:', error);
         
+        // Zaten HTTP hatası ise doğrudan fırlat
+        if (error.statusCode && error.expose) {
+            throw error;
+        }
+        
         // Mongoose validation hatası kontrolü
         if (error.name === 'ValidationError') {
             throw createError({
@@ -148,7 +195,6 @@ class FoodService {
             });
         }
         
-        // Genel hata mesajı
         throw createError({
             statusCode: 500,
             message: 'Besin güncellenirken bir hata oluştu'
@@ -275,72 +321,8 @@ class FoodService {
 const foodService = new FoodService();
 export default foodService;
 
-export async function addFavoriteFood(userId, foodId) {
-  try {
-    const user = await User.findById(userId);
-    if (!user) {
-      throw createError({
-        statusCode: 404,
-        message: 'User not found'
-      });
-    }
+// Favori işlemleri favoritesService.js dosyasına taşındı
 
-    // Check if food exists
-    const food = await Food.findById(foodId);
-    if (!food) {
-      throw createError({
-        statusCode: 404,
-        message: 'Food not found'
-      });
-    }
+// Favori işlemleri favoritesService.js dosyasına taşındı
 
-    // Add to favorites if not already added
-    if (!user.favoriteFoods.includes(foodId)) {
-      user.favoriteFoods.push(foodId);
-      await user.save();
-    }
-
-    return user.favoriteFoods;
-  } catch (error) {
-    console.error('Error adding favorite food:', error);
-    throw error;
-  }
-}
-
-export async function removeFavoriteFood(userId, foodId) {
-  try {
-    const user = await User.findById(userId);
-    if (!user) {
-      throw createError({
-        statusCode: 404,
-        message: 'User not found'
-      });
-    }
-
-    // Remove from favorites
-    user.favoriteFoods = user.favoriteFoods.filter(id => id.toString() !== foodId);
-    await user.save();
-
-    return user.favoriteFoods;
-  } catch (error) {
-    console.error('Error removing favorite food:', error);
-    throw error;
-  }
-}
-
-export async function getFavoriteFoods(userId) {
-  try {
-    const user = await User.findById(userId).populate('favoriteFoods');
-    if (!user) {
-      throw createError({
-        statusCode: 404,
-        message: 'User not found'
-      });
-    }
-
-    return user.favoriteFoods;
-  } catch (error) {
-    console.error('Error getting favorite foods:', error);
-    throw error;
-  }
-}
+// Favori işlemleri favoritesService.js dosyasına taşındı

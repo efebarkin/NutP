@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
     const session = await getServerSession(event);
     const user = session.user;
 
-    const profile = await User.findById(user.id).select('-password');
+    const profile = await User.findById(user._id).select('-password'); // id yerine _id kullanıyoruz
 
     if (!profile) {
       throw createError({

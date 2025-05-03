@@ -406,7 +406,7 @@ const addFriend = async email => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${authStore.user?.token}`,
+        ...authStore.getAuthHeader(), // getAuthHeader metodu hem Authorization hem X-CSRF-Token ekler
       },
       body: JSON.stringify({ email }),
     });
@@ -462,7 +462,7 @@ const startConversation = async userId => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${authStore.user?.token}`,
+        ...authStore.getAuthHeader(), // getAuthHeader metodu hem Authorization hem X-CSRF-Token ekler
       },
       body: JSON.stringify({ participants: [userId] }),
     });

@@ -1,7 +1,7 @@
-import { eventHandler, readBody } from 'h3';
+import { defineEventHandler, readBody } from 'h3';
 import { ErrorTypes } from '~/server/utils/error';
 
-export default eventHandler(async (event) => {
+export default defineEventHandler(async (event) => {
   try {
     const metrics = await readBody(event);
     const { gender, age, weight, height, neck, waist, hip } = metrics;

@@ -1778,10 +1778,14 @@ async function updateFood() {
     delete nutrients.vitamins;
     delete nutrients.others;
     
+    // Auth store'u kullan
+    const authStore = useAuthStore();
+    
     const response = await fetch(`/api/foods/${editingFoodId.value}`, {
       method: 'PUT',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': authStore.csrfToken
       },
       body: JSON.stringify({
         name: editingFood.name,
@@ -1965,10 +1969,14 @@ async function addFood() {
       originalCategory: editingFood.category
     };
     
+    // Auth store'u kullan
+    const authStore = useAuthStore();
+    
     const response = await fetch('/api/foods/create', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': authStore.csrfToken
       },
       body: JSON.stringify({
         name: editingFood.name,
@@ -2053,8 +2061,14 @@ async function uploadPhoto() {
     formData.append('photo', photoFile.value);
     
     // API'ye gönder
+    // Auth store'u kullan
+    const authStore = useAuthStore();
+    
     const response = await fetch('/api/foods/uploadPhoto', {
       method: 'POST',
+      headers: {
+        'X-CSRF-Token': authStore.csrfToken
+      },
       body: formData
     });
     

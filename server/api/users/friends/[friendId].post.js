@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
 
     // Use your existing friendshipService to send a friend request
     const friendship = await friendshipService.sendFriendRequest(
-      user.id,
+      user._id, // id yerine _id kullanıyoruz
       friendId,
     );
 

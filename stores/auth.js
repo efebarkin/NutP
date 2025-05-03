@@ -9,6 +9,7 @@ export const useAuthStore = defineStore('auth', {
     refreshPromise: null,
     refreshTimer: null,
     socketToken: null,
+    csrfToken: null, // CSRF token için yeni state
   }),
 
   getters: {
@@ -99,12 +100,6 @@ export const useAuthStore = defineStore('auth', {
           console.log('userId state.user._id\'den alındı:', state.user._id);
           return state.user._id;
         }
-        
-        // Sonra id alanını kontrol et
-        if (state.user.id) {
-          console.log('userId state.user.id\'den alındı:', state.user.id);
-          return state.user.id;
-        }
       }
       
       // localStorage'dan ID'yi almayı dene
@@ -120,12 +115,6 @@ export const useAuthStore = defineStore('auth', {
               console.log('userId localStorage\'dan (_id) alındı:', user._id);
               return user._id;
             }
-            
-            // Sonra id alanını kontrol et
-            if (user && user.id) {
-              console.log('userId localStorage\'dan (id) alındı:', user.id);
-              return user.id;
-            }
           }
         } catch (e) {
           console.error('Error getting userId from localStorage:', e);
@@ -140,9 +129,11 @@ export const useAuthStore = defineStore('auth', {
   actions: {
     async initialize() {
       if (this.initialized) return;
-
       try {
         this.loading = true;
+        
+        // CSRF token al
+        await this.fetchCsrfToken();
         console.log('Auth store initialize başladı');
 
         // Önce localStorage'dan kullanıcı bilgisini kontrol et
@@ -154,12 +145,34 @@ export const useAuthStore = defineStore('auth', {
             try {
               const user = JSON.parse(userJson);
               console.log('localStorage\'dan user parse edildi:', user._id ? 'ID mevcut' : 'ID yok');
+              console.log('localStorage\'dan yüklenen user rolü:', user.role);
+              
+              // Rol kontrolü yap ve düzelt
+              if (user.role) {
+                // Eğer role bir string ise, array'e çevir
+                if (typeof user.role === 'string') {
+                  console.log('localStorage\'dan yüklenen role string olarak geldi, array\'e çevriliyor:', user.role);
+                  user.role = [user.role];
+                }
+                
+                // Eğer role undefined veya boş array ise, varsayılan olarak ['user'] ata
+                if (!user.role || user.role.length === 0) {
+                  console.log('localStorage\'dan yüklenen role boş veya tanımsız, varsayılan [user] atanıyor');
+                  user.role = ['user'];
+                }
+                
+                console.log('localStorage\'dan yüklenen son kullanıcı rolü:', user.role);
+              } else {
+                // Role alanı yoksa, varsayılan olarak ['user'] ata
+                console.log('localStorage\'dan yüklenen kullanıcıda role alanı yok, varsayılan [user] atanıyor');
+                user.role = ['user'];
+              }
               
               if (user && user._id) {
-                this.setUser(user);
+                this.user = user; // setUser yerine direkt atama yapıyoruz, çünkü zaten rol kontrolü yaptık
                 // Periyodik token kontrolü başlat
                 this.startTokenRefreshTimer();
-                console.log('localStorage\'dan kullanıcı yüklendi, ID:', user._id);
+                console.log('localStorage\'dan kullanıcı yüklendi, ID:', user._id, 'role:', user.role);
               } else {
                 console.warn('localStorage\'daki user objesinde _id alanı yok');
               }
@@ -298,10 +311,18 @@ export const useAuthStore = defineStore('auth', {
       this.error = null;
 
       try {
+        // Önce CSRF token'i kontrol et, yoksa al
+        if (!this.csrfToken) {
+          await this.fetchCsrfToken();
+        }
+        
         const response = await $fetch('/api/auth/login', {
           method: 'POST',
           body: { email, password },
           credentials: 'include',
+          headers: {
+            'X-CSRF-Token': this.csrfToken
+          }
         });
 
         if (response?.user) {
@@ -325,11 +346,28 @@ export const useAuthStore = defineStore('auth', {
       this.error = null;
 
       try {
+        // Önce CSRF token'i kontrol et, yoksa al
+        if (!this.csrfToken) {
+          await this.fetchCsrfToken();
+        }
+        
         const response = await $fetch('/api/auth/register', {
           method: 'POST',
           body: userData,
           credentials: 'include',
+          headers: {
+            'X-CSRF-Token': this.csrfToken
+          }
         });
+
+        // Kayıt başarılı ve kullanıcı bilgileri döndüyse, otomatik giriş yap
+        if (response?.success && response?.user) {
+          console.log('[AuthStore] register - Kayıt başarılı, otomatik giriş yapılıyor');
+          // setUser ile kullanıcı bilgilerini ayarla (bu otomatik olarak localStorage'a da kaydeder)
+          this.setUser(response.user);
+          // Token kontrolü için zamanlayıcıyı başlat
+          this.startTokenRefreshTimer();
+        }
 
         return response;
       } catch (error) {
@@ -344,9 +382,17 @@ export const useAuthStore = defineStore('auth', {
     // Yeni eklenen logout metodu
     async logout() {
       try {
+        // Önce CSRF token'i kontrol et, yoksa al
+        if (!this.csrfToken) {
+          await this.fetchCsrfToken();
+        }
+        
         await $fetch('/api/auth/logout', {
           method: 'POST',
           credentials: 'include',
+          headers: {
+            'X-CSRF-Token': this.csrfToken
+          }
         });
 
         this.clearUser();
@@ -356,6 +402,14 @@ export const useAuthStore = defineStore('auth', {
         if (this.refreshTimer) {
           clearInterval(this.refreshTimer);
           this.refreshTimer = null;
+        }
+
+        // CSRF token'i temizle
+        this.csrfToken = null;
+
+        // Yönlendirme işlemi
+        if (process.client) {
+          window.location.href = '/login';
         }
 
         return true;
@@ -371,6 +425,27 @@ export const useAuthStore = defineStore('auth', {
       
       console.log('setUser çağrıldı, user:', JSON.stringify(user));
       
+      // Kullanıcı rolü kontrolü ve düzeltme
+      if (user.role) {
+        // Eğer role bir string ise, array'e çevir
+        if (typeof user.role === 'string') {
+          console.log('Role string olarak geldi, array\'e çevriliyor:', user.role);
+          user.role = [user.role];
+        }
+        
+        // Eğer role undefined veya null ise, varsayılan olarak ['user'] ata
+        if (!user.role || user.role.length === 0) {
+          console.log('Role boş veya tanımsız, varsayılan [user] atanıyor');
+          user.role = ['user'];
+        }
+        
+        console.log('Son kullanıcı rolü:', user.role);
+      } else {
+        // Role alanı yoksa, varsayılan olarak ['user'] ata
+        console.log('Role alanı yok, varsayılan [user] atanıyor');
+        user.role = ['user'];
+      }
+      
       // Kullanıcı bilgisini state'e kaydet
       this.user = user;
       
@@ -378,7 +453,7 @@ export const useAuthStore = defineStore('auth', {
       if (process.client) {
         try {
           localStorage.setItem('user', JSON.stringify(user));
-          console.log('User localStorage\'a kaydedildi, _id:', user._id);
+          console.log('User localStorage\'a kaydedildi, _id:', user._id, 'role:', user.role);
         } catch (e) {
           console.error('Error saving user to localStorage:', e);
         }
@@ -398,6 +473,11 @@ export const useAuthStore = defineStore('auth', {
         }
       }
     },
+    
+    // CSRF token'i yenile
+    async refreshCsrfToken() {
+      return await this.fetchCsrfToken();
+    },
 
     setError(error) {
       this.error = error;
@@ -405,9 +485,39 @@ export const useAuthStore = defineStore('auth', {
 
     getAuthHeader() {
       const token = this.token;
-      return {
+      const headers = {
         Authorization: token ? `Bearer ${token}` : ''
       };
+      
+      // CSRF token varsa ekle
+      if (this.csrfToken) {
+        headers['X-CSRF-Token'] = this.csrfToken;
+      }
+      
+      return headers;
+    },
+    
+    // CSRF token al
+    async fetchCsrfToken() {
+      try {
+        console.log('CSRF token alınıyor...');
+        const { data } = await useFetch('/api/auth/csrf-token', {
+          method: 'GET',
+          credentials: 'include'
+        });
+        
+        if (data.value?.csrfToken) {
+          console.log('CSRF token alındı');
+          this.csrfToken = data.value.csrfToken;
+          return data.value.csrfToken;
+        } else {
+          console.error('CSRF token alınamadı');
+          return null;
+        }
+      } catch (error) {
+        console.error('CSRF token alınırken hata:', error);
+        return null;
+      }
     },
     setupGlobalErrorHandler() {
       // Tarayıcı ortamında çalışıyorsa
@@ -473,7 +583,7 @@ export const useAuthStore = defineStore('auth', {
 
         // If server doesn't provide a token, create a simple one
         console.log('Creating fallback socket token');
-        if (!this.user || !this.user.id) {
+        if (!this.user || !this.user._id) {
           console.error('Cannot create fallback token: User not authenticated');
           return null;
         }
@@ -484,12 +594,12 @@ export const useAuthStore = defineStore('auth', {
         const now = Math.floor(Date.now() / 1000);
         const payload = btoa(
           JSON.stringify({
-            userId: this.user.id,
+            userId: this.user._id,
             iat: now,
             exp: now + 3600, // 1 hour expiration
           }),
         );
-        const signature = btoa(`${this.user.id}-${now}-socket`);
+        const signature = btoa(`${this.user._id}-${now}-socket`);
 
         const fallbackToken = `${header}.${payload}.${signature}`;
         this.socketToken = fallbackToken;
@@ -498,8 +608,8 @@ export const useAuthStore = defineStore('auth', {
         console.error('Error getting socket token:', error);
 
         // Create a fallback token as a last resort
-        if (this.user && this.user.id) {
-          const fallbackToken = `fallback.${btoa(this.user.id)}.${Date.now()}`;
+        if (this.user && this.user._id) {
+          const fallbackToken = `fallback.${btoa(this.user._id)}.${Date.now()}`;
           this.socketToken = fallbackToken;
           return fallbackToken;
         }

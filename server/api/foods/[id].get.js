@@ -1,7 +1,7 @@
-import { defineEventHandler } from 'h3';
+import { defineAuthenticatedHandler } from '~/server/utils/auth';
 import foodService from '~/server/services/foodService';
 
-export default defineEventHandler(async (event) => {
+export default defineAuthenticatedHandler(async (event) => {
     const id = event.context.params.id;
     return await foodService.getFoodById(id);
 })

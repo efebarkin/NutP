@@ -26,7 +26,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Use userService to search users
-    const users = await userService.searchUsers(searchQuery, limit, user.id);
+    const users = await userService.searchUsers(searchQuery, limit, user._id); // id yerine _id kullanıyoruz
 
     return { users };
   } catch (error) {

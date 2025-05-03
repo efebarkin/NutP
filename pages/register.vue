@@ -277,8 +277,21 @@ const handleSubmit = validateAndSubmit(async (values) => {
     // API'ye tüm alanları gönder
     const result = await authStore.register(values);
     if (result && result.success) {
-      toast.success('Hesabınız başarıyla oluşturuldu');
-      navigateTo('/');
+      toast.success('Hesabınız başarılı bir şekilde oluşturuldu ve otomatik giriş yapıldı');
+      
+      // Kullanıcı rolüne göre yönlendirme yap
+      if (authStore.user && Array.isArray(authStore.user.role)) {
+        // Admin kullanıcıları admin paneline yönlendir
+        if (authStore.user.role.includes('admin')) {
+          navigateTo('/admin/userAdmin');
+        } else {
+          // Normal kullanıcıları ana sayfaya yönlendir
+          navigateTo('/');
+        }
+      } else {
+        // Rol bilgisi yoksa varsayılan olarak ana sayfaya yönlendir
+        navigateTo('/');
+      }
     }
   } catch (err) {
     // Backend'den dönen validasyon hatalarını inputlara dağıt

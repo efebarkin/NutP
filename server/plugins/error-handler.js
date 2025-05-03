@@ -20,4 +20,5 @@ export default defineNitroPlugin((nitroApp) => {
         : 'An unexpected error occurred'
     })
   })
-})
+});
+

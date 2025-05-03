@@ -20,7 +20,7 @@ export default defineEventHandler(async (event) => {
 
     // Use your existing conversationService to get conversations
     const conversations = await conversationService.getUserConversations(
-      user.id,
+      user._id, // id yerine _id kullanıyoruz
     );
 
     // Apply limit and skip

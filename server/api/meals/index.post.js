@@ -1,7 +1,7 @@
-import { defineEventHandler, readBody, createError } from 'h3';
+import { readBody, createError } from 'h3';
 import { Meal } from '~/server/models/Meal';
 import { Food } from '~/server/models/Food';
-import { defineAuthenticatedHandler } from '~/server/middleware/auth';
+import { defineAuthenticatedHandler } from '~/server/utils/auth';
 
 export default defineAuthenticatedHandler(async (event) => {
   try {
@@ -48,7 +48,7 @@ export default defineAuthenticatedHandler(async (event) => {
 
     // Yeni meal oluştur
     const meal = new Meal({
-      userId: event.context.auth.user._id,
+      userId: event.context.auth.user._id, // _id yerine id kullanıyoruz
       name: body.name,
       type: body.type,
       date: new Date(body.date),

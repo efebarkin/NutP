@@ -1,8 +1,11 @@
 import mongoose from 'mongoose';
 import { defineNitroPlugin } from 'nitropack/runtime/plugin';
 
+mongoose.set('strictQuery', false);
+
 export default defineNitroPlugin(async (nitroApp) => {
   const config = useRuntimeConfig();
+  
 
   // MongoDB bağlantı seçenekleri
   const options = {
@@ -33,19 +36,20 @@ export default defineNitroPlugin(async (nitroApp) => {
       console.log('MongoDB disconnected');
     });
 
-    // Uygulama kapatıldığında bağlantıyı temiz bir şekilde kapat
-    process.on('SIGINT', async () => {
-      try {
-        await mongoose.connection.close();
-        console.log('MongoDB connection closed through app termination');
-        process.exit(0);
-      } catch (err) {
-        console.error('Error closing MongoDB connection:', err);
-        process.exit(1);
-      }
-    });
   } catch (error) {
     console.error('MongoDB connection error:', error);
-    throw error;
+    process.exit(1);
   }
+
+  nitroApp.hooks.hook('close', async () => {
+    // Sadece bağlantı açıksa kapatmayı dene
+    if (mongoose.connection.readyState === 1) {
+      try {
+        await mongoose.connection.close();
+        console.log('MongoDB connection closed successfully due to application shutdown.');
+      } catch (err) {
+        console.error('Error closing MongoDB connection during application shutdown:', err);
+      }
+    }
+  });
 });

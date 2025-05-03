@@ -127,12 +127,46 @@ const handleSubmit = validateAndSubmit(async (values) => {
     const success = await authStore.login(values.email, values.password);
     if (success) {
       toast.success('Başarıyla giriş yapıldı');
+      
+      // URL'den redirect parametresini al
+      const route = useRoute();
+      const redirectParam = route.query.redirect;
+      
+      // localStorage'dan redirect path'i al
       const redirectPath = localStorage.getItem('redirectPath');
-      if (redirectPath) {
+      
+      // Kullanıcı rollerini kontrol et
+      const userRoles = authStore.user?.role || [];
+      const isAdmin = userRoles.includes('admin');
+      
+      // Yönlendirme öncelik sırası:
+      // 1. URL'deki redirect parametresi
+      // 2. localStorage'daki redirectPath
+      // 3. Admin kullanıcılar için admin paneli, diğerleri için ana sayfa
+      if (redirectParam) {
+        // Admin olmayan kullanıcılar admin sayfalarına erişemez
+        if (redirectParam.startsWith('/admin') && !isAdmin) {
+          navigateTo('/');
+        } else {
+          navigateTo(redirectParam);
+        }
+      } else if (redirectPath) {
         localStorage.removeItem('redirectPath');
-        navigateTo(redirectPath);
+        // Admin olmayan kullanıcılar admin sayfalarına erişemez
+        if (redirectPath.startsWith('/admin') && !isAdmin) {
+          navigateTo('/');
+        } else {
+          navigateTo(redirectPath);
+        }
       } else {
-        navigateTo('/');
+        // Admin kullanıcılar için admin paneline yönlendirme seçeneği göster
+        if (isAdmin) {
+          // Admin kullanıcılar için yönlendirme seçeneği göster
+          // Bu kısım opsiyonel, direkt admin paneline yönlendirmek yerine bir modal gösterilebilir
+          navigateTo('/');
+        } else {
+          navigateTo('/');
+        }
       }
     } else {
       error.value = authStore.error || 'Giriş yapılırken bir hata oluştu';

@@ -1,4 +1,4 @@
-import { Meal } from '~/server/models/meal';
+import { Meal } from '~/server/models/Meal';
 import { getServerSession } from '#auth';
 
 export default defineEventHandler(async (event) => {
@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Son 5 öğünü getir
-    const meals = await Meal.find({ userId: session.user.id })
+    const meals = await Meal.find({ userId: session.user._id }) // id yerine _id kullanıyoruz
       .sort({ date: -1 })
       .limit(5)
       .populate({

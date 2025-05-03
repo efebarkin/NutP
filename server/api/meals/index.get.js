@@ -1,6 +1,6 @@
 import { defineEventHandler, createError } from 'h3';
 import { Meal } from '~/server/models/Meal';
-import { defineAuthenticatedHandler } from '~/server/middleware/auth';
+import { defineAuthenticatedHandler } from '~/server/utils/auth';
 
 export default defineAuthenticatedHandler(async (event) => {
   try {

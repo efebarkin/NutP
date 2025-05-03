@@ -1,6 +1,5 @@
 import { defineEventHandler, getQuery } from 'h3';
-import { User } from '~/server/models/user';
-import { Meal } from '~/server/models/meal';
+import { Meal } from '~/server/models/Meal';
 import { ErrorTypes } from '~/server/utils/error';
 
 export default defineEventHandler(async (event) => {

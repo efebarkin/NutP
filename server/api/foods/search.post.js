@@ -1,6 +1,6 @@
 import { readBody, createError } from 'h3';
 import { Food } from '~/server/models/Food';
-import { defineAuthenticatedHandler } from '~/server/middleware/auth';
+import { defineAuthenticatedHandler } from '~/server/utils/auth';
 
 export default defineAuthenticatedHandler(async (event) => {
   try {

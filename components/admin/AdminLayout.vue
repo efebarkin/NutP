@@ -18,11 +18,11 @@
         <ul class="mt-2 space-y-1">
           <li>
             <NuxtLink 
-              to="/admin/dashboard"
+              to="/admin"
               class="block px-4 py-2.5 text-sm flex items-center rounded-md transition-colors duration-200 hover:bg-gray-800"
-              :class="{ 'bg-gray-800 border-l-4 border-green-500': currentRoute === '/admin/dashboard' }"
+              :class="{ 'bg-gray-800 border-l-4 border-green-500': currentRoute === '/admin' }"
             >
-              <i class="fas fa-chart-line w-5 h-5 mr-3" :class="currentRoute === '/admin/dashboard' ? 'text-green-400' : 'text-gray-400'"></i> Dashboard
+              <i class="fas fa-chart-line w-5 h-5 mr-3" :class="currentRoute === '/admin' ? 'text-green-400' : 'text-gray-400'"></i> Dashboard
             </NuxtLink>
           </li>
           <li>

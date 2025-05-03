@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
     // Find and delete meal
     const meal = await Meal.findOneAndDelete({
       _id: mealId,
-      userId: user.id
+      userId: user._id // id yerine _id kullanıyoruz
     });
 
     if (!meal) {

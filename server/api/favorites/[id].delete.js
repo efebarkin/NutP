@@ -1,23 +1,17 @@
-import { User } from '~/server/models/User';
-import { ErrorTypes } from '~/server/utils/error';
-import { getServerSession } from '~/server/utils/auth';
+import { createError } from 'h3';
+import { defineAuthenticatedHandler } from '~/server/utils/auth';
+import favoritesService from '~/server/services/favoritesService';
 
-export default defineEventHandler(async (event) => {
+export default defineAuthenticatedHandler(async (event) => {
   try {
-    const userId = await getServerSession(event);
+    // Kimlik doğrulama defineAuthenticatedHandler tarafından yapıldı
+    const userId = event.context.auth.user._id; // id yerine _id kullanıyoruz
+    
     const foodId = event.context.params.id;
     
-    const user = await User.findById(userId);
-    
-    // Check if food exists in favorites
-    if (!user.favoriteFoods.includes(foodId)) {
-      throw ErrorTypes.NOT_FOUND('Bu besin favorilerinizde bulunamadı');
-    }
-    
-    user.favoriteFoods = user.favoriteFoods.filter(id => id.toString() !== foodId);
-    await user.save();
-    
-    return { message: 'Besin favorilerden kaldırıldı' };
+    // Favori silme işlemini servis üzerinden yap
+    const result = await favoritesService.removeFavoriteFood(userId, foodId);
+    return result;
   } catch (error) {
     console.error('Error removing from favorites:', error);
     throw error;

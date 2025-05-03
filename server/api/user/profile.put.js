@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
 
     // Update user
     const updatedUser = await User.findByIdAndUpdate(
-      user.id,
+      user._id, // id yerine _id kullanıyoruz
       { $set: updateData },
       { new: true, runValidators: true }
     );

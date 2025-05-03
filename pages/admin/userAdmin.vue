@@ -249,8 +249,16 @@ const lastRegistrationDate = computed(() => {
   return formatDate(sortedUsers[0].createdAt);
 });
 
-// Bileşen yüklendiğinde kullanıcıları çek
+// Bileşen yüklendiğinde CSRF token al ve kullanıcıları çek
 onMounted(async () => {
+  // Auth store'u çağır
+  const authStore = useAuthStore();
+  
+  // CSRF token'i kontrol et, yoksa al
+  if (!authStore.csrfToken) {
+    await authStore.fetchCsrfToken();
+  }
+  
   await fetchUsers();
 });
 
@@ -263,8 +271,16 @@ async function fetchUsers(searchQuery = '') {
       search: searchQuery || '',
     });
     
+    // Auth store'dan CSRF token al
+    const authStore = useAuthStore();
+    
     // Endpoint'i oluştur ve API'yi çağır
-    const response = await fetch(`/api/user/users?${params.toString()}`);
+    const response = await fetch(`/api/user/users?${params.toString()}`, {
+      headers: {
+        'Authorization': authStore.token,
+        'X-CSRF-Token': authStore.csrfToken
+      }
+    });
     
     if (!response.ok) {
       throw new Error(`API yanıt hatası: ${response.status}`);
@@ -337,10 +353,14 @@ function confirmDeleteUser(id) {
 // Kullanıcı silme fonksiyonu
 async function deleteUser(id) {
   try {
+    // Auth store'dan CSRF token al
+    const authStore = useAuthStore();
+    
     const response = await fetch(`/api/user/${id}`, { 
       method: 'DELETE',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': authStore.csrfToken
       }
     });
     

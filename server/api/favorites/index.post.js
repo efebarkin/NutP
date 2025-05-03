@@ -1,55 +1,17 @@
-import { defineEventHandler, readBody, createError } from 'h3';
-import { User } from '~/server/models/User';
-import { getServerSession } from '~/server/utils/auth';
+import { readBody, createError } from 'h3';
+import { defineAuthenticatedHandler } from '~/server/utils/auth';
+import favoritesService from '~/server/services/favoritesService';
 
-export default defineEventHandler(async (event) => {
+export default defineAuthenticatedHandler(async (event) => {
   try {
-    // Cookie-based authentication
-    const session = await getServerSession(event);
-    if (!session?.user?.id) {
-      throw createError({
-        statusCode: 401,
-        message: 'Bu işlem için giriş yapmanız gerekiyor'
-      });
-    }
-
+    // Kimlik doğrulama defineAuthenticatedHandler tarafından yapıldı
+    const userId = event.context.auth.user._id; // id yerine _id kullanıyoruz
+    
     const { foodId } = await readBody(event);
-    if (!foodId) {
-      throw createError({
-        statusCode: 400,
-        message: 'Besin ID\'si gerekli'
-      });
-    }
-
-    // Check if food is already in favorites
-    const user = await User.findById(session.user.id);
-    if (!user) {
-      throw createError({
-        statusCode: 404,
-        message: 'Kullanıcı bulunamadı'
-      });
-    }
-
-    if (user.favoriteFoods.includes(foodId)) {
-      return {
-        success: true,
-        message: 'Bu besin zaten favorilerinizde',
-        alreadyExists: true
-      };
-    }
-
-    // Add to favorites
-    user.favoriteFoods.push(foodId);
-    await user.save();
-
-    return {
-      success: true,
-      message: 'Besin favorilere eklendi',
-      data: {
-        userId: user._id,
-        foodId
-      }
-    };
+    
+    // Favori ekleme işlemini servis üzerinden yap
+    const result = await favoritesService.addFavoriteFood(userId, foodId);
+    return result;
   } catch (error) {
     console.error('Add to favorites error:', error);
     throw createError({

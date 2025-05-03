@@ -13,6 +13,9 @@ export default defineNuxtConfig({
   pinia: {
     autoImports: ['defineStore', 'acceptHMRUpdate'],
   },
+  plugins: [
+    '~/plugins/csrf.js' // CSRF token plugin'i ekle
+  ],
   app: {
     head: {
       title: 'NutP',
@@ -34,6 +37,10 @@ export default defineNuxtConfig({
         {
           rel: 'stylesheet',
           href: 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css'
+        },
+        {
+          rel: 'stylesheet',
+          href: 'https://fonts.googleapis.com/icon?family=Material+Icons'
         }
       ],
       // Content Security Policy ayarları - görsel kaynaklarını genişlet
@@ -80,7 +87,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     mongodbUri: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/nutdb',
     jwtSecret: process.env.JWT_SECRET || 'your-secret-key',
-    openaiApiKey: process.env.OPENAI_API_KEY,
+    csrfSecret: process.env.CSRF_SECRET || 'csrf-secret-key', // CSRF Secret key
     aws: {
       accessKeyId: process.env.AWS_ACCESS_KEY_ID,
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
@@ -89,15 +96,28 @@ export default defineNuxtConfig({
     },
     public: {
       apiBase: process.env.NUXT_PUBLIC_API_BASE || '/api',
+      csrfEnabled: process.env.CSRF_ENABLED !== 'false', // CSRF koruması aktif mi
     },
   },
   vite: {},
   webpack: {},
   compatibilityDate: '2024-12-29',
+  // Nitro yapılandırması - server middleware'leri ve diğer ayarlar burada tanımlanır
   nitro: {
     plugins: ["~/server/db/index.js"],
     experimental: {
       asyncContext: true
+    },
+    // Server routes yapılandırması
+    routeRules: {
+      '/api/**': {
+        // API isteklerinde CORS ve güvenlik ayarları
+        cors: true,
+        headers: {
+          'Access-Control-Allow-Methods': 'GET,HEAD,PUT,PATCH,POST,DELETE',
+          'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-CSRF-Token'
+        }
+      }
     }
   }
 });

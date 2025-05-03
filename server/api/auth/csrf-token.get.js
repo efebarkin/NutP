@@ -1,27 +1,8 @@
-import { eventHandler, getCookie, setCookie } from 'h3';
-import csrf from 'csrf';
+import { defineEventHandler } from 'h3';
+import authService from '~/server/services/authService';
 
-const tokens = new csrf();
-
-export default eventHandler(async (event) => {
-  try {
-    // Mevcut token'ı kontrol et
-    let token = getCookie(event, 'csrf-token');
-    
-    // Token yoksa yeni oluştur
-    if (!token) {
-      token = tokens.create(process.env.CSRF_SECRET || 'your-csrf-secret');
-      setCookie(event, 'csrf-token', token, {
-        httpOnly: true,
-        sameSite: true
-      });
-    }
-
-    return {
-      token
-    };
-  } catch (error) {
-    console.error('CSRF token error:', error);
-    throw error;
-  }
+// CSRF token'ı kimlik doğrulaması olmadan alınabilmelidir
+// Çünkü login işlemi için de CSRF token gereklidir
+export default defineEventHandler(async (event) => {
+  return await authService.getCsrfToken(event);
 });

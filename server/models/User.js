@@ -7,10 +7,8 @@ const userSchema = new mongoose.Schema({
   email: {
     type: String,
     required: true,
-    unique: true,
     trim: true,
     lowercase: true,
-    index: true,
     validate: {
       validator: validator.isEmail,
       message: 'Please provide a valid email',
@@ -190,8 +188,8 @@ userSchema.methods.toJSON = function() {
 };
 
 // Sadece şunları bırakabilirsiniz:
-userSchema.index({ unique: true });
-userSchema.index({ isAdmin: 1 });
+userSchema.index({email: 1}, {unique: true});
+userSchema.index({ role: 1 });
 userSchema.index({ 'friends': 1 });
 userSchema.index({ 'conversations': 1 });
 

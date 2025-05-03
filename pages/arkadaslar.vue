@@ -329,11 +329,6 @@ const userId = computed(() => {
       console.log('arkadaslar.vue: userId authStore.user._id\'den alındı:', authStore.user._id);
       return authStore.user._id;
     }
-    
-    if (authStore.user.id) {
-      console.log('arkadaslar.vue: userId authStore.user.id\'den alındı:', authStore.user.id);
-      return authStore.user.id;
-    }
   }
   
   console.log('arkadaslar.vue: userId bulunamadı');

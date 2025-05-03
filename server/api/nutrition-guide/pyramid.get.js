@@ -1,6 +1,6 @@
-import { eventHandler } from 'h3';
+import { defineEventHandler } from 'h3';
 
-export default eventHandler(async (event) => {
+export default defineEventHandler(async (event) => {
   // Besin piramidi verisi statik olduğu için doğrudan dönebiliriz
   return {
     levels: [
