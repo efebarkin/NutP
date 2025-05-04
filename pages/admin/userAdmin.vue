@@ -1,7 +1,5 @@
 <template>
-  <AdminLayout>
-    <template #header-title>Kullanıcı Yönetimi</template>
-    
+  <div>
     <!-- Action Bar -->
     <div class="bg-white rounded-lg shadow-sm p-4 mb-6">
       <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -12,7 +10,7 @@
             type="text" 
             placeholder="Kullanıcı ara..."
             class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            @keyup.enter="fetchUsers(searchTerm)"
+            @keyup.enter="applyFiltersAndSearch"
           >
           <div class="absolute left-3 top-2.5 text-gray-400">
             <i class="fas fa-search"></i>
@@ -22,11 +20,21 @@
         <!-- Action Buttons -->
         <div class="flex items-center space-x-2">
           <button 
-            @click="fetchUsers(searchTerm)"
-            class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
+            @click="showFilters = !showFilters"
+            class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors relative"
           >
-            <i class="fas fa-sync-alt mr-2"></i>
-            <span>Yenile</span>
+            <i class="fas fa-filter mr-2"></i>
+            <span>Filtrele</span>
+            <span v-if="activeFilterCount > 0" class="absolute -top-2 -right-2 bg-blue-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+              {{ activeFilterCount }}
+            </span>
+          </button>
+          <button 
+            @click="applyFiltersAndSearch"
+            class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+          >
+            <i class="fas fa-search mr-2"></i>
+            <span>Ara</span>
           </button>
           <button 
             @click="showAddModal = true"
@@ -36,6 +44,82 @@
             <span>Yeni Ekle</span>
           </button>
         </div>
+      </div>
+    </div>
+    
+    <!-- Filters Panel -->
+    <div v-if="showFilters" class="bg-white rounded-lg shadow-sm p-4 mb-6 transition-all duration-300 ease-in-out">
+      <div class="mb-3 border-b border-gray-200 pb-2">
+        <h3 class="text-lg font-medium text-gray-800">Gelişmiş Filtreler</h3>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- Rol Filtresi -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Kullanıcı Rolü</label>
+          <select 
+            v-model="filters.role" 
+            class="w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="">Tümü</option>
+            <option value="admin">Admin</option>
+            <option value="user">Kullanıcı</option>
+            <option value="nutritionist">Diyetisyen</option>
+            <option value="trainer">Antrenör</option>
+          </select>
+        </div>
+        
+        <!-- Durum Filtresi -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Durum</label>
+          <select 
+            v-model="filters.status" 
+            class="w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="">Tümü</option>
+            <option value="active">Aktif</option>
+            <option value="inactive">Pasif</option>
+          </select>
+        </div>
+        
+        <!-- Tarih Aralığı Filtresi -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Kayıt Tarihi</label>
+          <div class="flex space-x-2">
+            <div class="flex-1">
+              <input 
+                type="date" 
+                v-model="filters.dateFrom" 
+                class="w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Başlangıç"
+              >
+            </div>
+            <div class="flex-1">
+              <input 
+                type="date" 
+                v-model="filters.dateTo" 
+                class="w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Bitiş"
+              >
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="mt-4 flex justify-end space-x-2">
+        <button 
+          @click="resetFilters" 
+          class="px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+        >
+          <i class="fas fa-times mr-2"></i>
+          Filtreleri Temizle
+        </button>
+        <button 
+          @click="applyFiltersAndSearch" 
+          class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+        >
+          <i class="fas fa-check mr-2"></i>
+          Uygula
+        </button>
       </div>
     </div>
 
@@ -84,7 +168,6 @@
         <h2 class="text-lg font-semibold text-gray-800">Kullanıcı Listesi</h2>
         <span class="text-sm text-gray-500">Toplam: {{ users.length }} kullanıcı</span>
       </div>
-      
       <div class="overflow-x-auto">
         <table class="min-w-full divide-y divide-gray-200">
           <thead class="bg-gray-50">
@@ -214,12 +297,17 @@
         </div>
       </div>
     </div>
-  </AdminLayout>
+  </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, onMounted, computed, nextTick, watch } from 'vue';
+import { useAuthStore } from '~/stores/auth';
 import { useToast } from 'vue-toastification';
+import { useHead } from '#app';
+import role from '~/middleware/role';
+
+useHead({ titleTemplate: '%s | Kullanıcı Yönetimi' });
 
 // Toast kullanımı
 const toast = useToast();
@@ -232,6 +320,25 @@ const showAddModal = ref(false);
 const showEditModal = ref(false);
 const editingUserId = ref(null);
 const sortConfig = ref({ key: 'createdAt', direction: 'desc' });
+const showFilters = ref(false);
+
+// Filtreleme durumları
+const filters = ref({
+  role: '',
+  status: '',
+  dateFrom: '',
+  dateTo: ''
+});
+
+// Aktif filtre sayısı
+const activeFilterCount = computed(() => {
+  let count = 0;
+  if (filters.value.role) count++;
+  if (filters.value.status) count++;
+  if (filters.value.dateFrom) count++;
+  if (filters.value.dateTo) count++;
+  return count;
+});
 
 // Hesaplanan özellikler
 const activeUsers = computed(() => {
@@ -249,6 +356,22 @@ const lastRegistrationDate = computed(() => {
   return formatDate(sortedUsers[0].createdAt);
 });
 
+// Filtreleri sıfırla
+function resetFilters() {
+  filters.value = {
+    role: '',
+    status: '',
+    dateFrom: '',
+    dateTo: ''
+  };
+  applyFiltersAndSearch();
+}
+
+// Filtreleri ve aramayı uygula
+function applyFiltersAndSearch() {
+  fetchUsers(searchTerm.value, filters.value);
+}
+
 // Bileşen yüklendiğinde CSRF token al ve kullanıcıları çek
 onMounted(async () => {
   // Auth store'u çağır
@@ -263,19 +386,39 @@ onMounted(async () => {
 });
 
 // Kullanıcıları API'den çeken fonksiyon
-async function fetchUsers(searchQuery = '') {
+async function fetchUsers(searchQuery = '', filterParams = {}) {
   loading.value = true;
   try {
     // API endpoint'ine query parametreleri ekle
-    const params = new URLSearchParams({
-      search: searchQuery || '',
-    });
+    const params = new URLSearchParams();
+    
+    // Arama parametresi
+    if (searchQuery && searchQuery.trim() !== '') {
+      params.append('search', searchQuery.trim());
+    }
+    
+    // Filtreleme parametreleri
+    if (filterParams.role) {
+      params.append('role', filterParams.role);
+    }
+    
+    if (filterParams.status) {
+      params.append('status', filterParams.status);
+    }
+    
+    if (filterParams.dateFrom) {
+      params.append('dateFrom', filterParams.dateFrom);
+    }
+    
+    if (filterParams.dateTo) {
+      params.append('dateTo', filterParams.dateTo);
+    }
     
     // Auth store'dan CSRF token al
     const authStore = useAuthStore();
     
     // Endpoint'i oluştur ve API'yi çağır
-    const response = await fetch(`/api/user/users?${params.toString()}`, {
+    const response = await fetch(`/api/user/users${params.toString() ? '?' + params.toString() : ''}`, {
       headers: {
         'Authorization': authStore.token,
         'X-CSRF-Token': authStore.csrfToken
@@ -304,6 +447,7 @@ async function fetchUsers(searchQuery = '') {
     loading.value = false;
   }
 }
+
 
 // Sıralama fonksiyonu
 function sortBy(key) {
@@ -460,7 +604,21 @@ useHead({
 
 // Middleware ile admin yetkilendirmesi eklemek iyi olur
 definePageMeta({
-  layout: false // Varsayılan layout kullanmasın
+  middleware: role(['admin']),
+  layout: 'admin', // Admin layout kullan
+  pageTransition: {
+    name: 'page',
+    mode: 'out-in',
+    onBeforeEnter: () => {
+      // Sayfa geçişi başlamadan önce içeriğin yüklenmesini bekle
+      return new Promise(resolve => {
+        nextTick(() => {
+          // İçerik yüklendiğinde resolve et
+          resolve();
+        });
+      });
+    }
+  }
 });
 </script>
 

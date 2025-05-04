@@ -1,6 +1,5 @@
 <template>
-  <AdminLayout>
-    <template #header-title>Dashboard</template>
+  <div>
     
     <!-- Hoş Geldiniz Kartı -->
     <div class="bg-gradient-to-r from-green-500 to-green-600 rounded-lg shadow-lg mb-6 overflow-hidden">
@@ -189,16 +188,22 @@
         </div>
       </div>
     </div>
-  </AdminLayout>
+  </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, nextTick } from 'vue';
 import { useAuthStore } from '~/stores/auth';
+import { useHead } from '#app';
+import role from '~/middleware/role';
 
 // Auth store
 const authStore = useAuthStore();
 const user = ref(null);
+
+useHead({
+  titleTemplate: '%s | Dashboard',
+});
 
 // Örnek istatistikler
 const stats = ref({
@@ -276,9 +281,23 @@ onMounted(async () => {
   // stats.value = await statsData.json();
 });
 
-// Varsayılan layout kullanmasın
+// Admin layout kullan
 definePageMeta({
-  layout: false
+  middleware: role(['admin']),
+  layout: 'admin',
+  pageTransition: {
+    name: 'page',
+    mode: 'out-in',
+    onBeforeEnter: () => {
+      // Sayfa geçişi başlamadan önce içeriğin yüklenmesini bekle
+      return new Promise(resolve => {
+        nextTick(() => {
+          // İçerik yüklendiğinde resolve et
+          resolve();
+        });
+      });
+    }
+  }
 });
 
 // FontAwesome ikonları için CDN linki

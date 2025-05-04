@@ -1,6 +1,5 @@
 <template>
-  <AdminLayout>
-    <template #header-title>Besin Yönetimi</template>
+  <div>
     
     <!-- Action Bar -->
     <div class="bg-white rounded-lg shadow-sm p-4 mb-6">
@@ -1288,16 +1287,18 @@
       </div>
     </div>
   </div>
-  </AdminLayout>
+  </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed, reactive } from 'vue';
+import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import { useHead } from '#app';
 import Swal from 'sweetalert2';
+import role from '~/middleware/role';
+
 
 // Sayfa başlığını ayarla
-useHead({ title: 'NutriDash - Besin Yönetimi' });
+useHead({ titleTemplate: '%s | Besin Yönetimi' });
 
 // Besin listesi ve yüklenme durumu
 const foods = ref([]);
@@ -2155,7 +2156,21 @@ useHead({
 
 // Middleware ile admin yetkilendirmesi eklemek iyi olur
 definePageMeta({
-  layout: false // Varsayılan layout kullanmasın
+  middleware: role(['admin']),
+  layout: 'admin', // Admin layout kullan
+  pageTransition: {
+    name: 'page',
+    mode: 'out-in',
+    onBeforeEnter: () => {
+      // Sayfa geçişi başlamadan önce içeriğin yüklenmesini bekle
+      return new Promise(resolve => {
+        nextTick(() => {
+          // İçerik yüklendiğinde resolve et
+          resolve();
+        });
+      });
+    }
+  }
 });
 </script>
 

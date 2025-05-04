@@ -694,5 +694,4 @@
 </template>
 
 <script setup>
-// Component logic here if needed
 </script>
