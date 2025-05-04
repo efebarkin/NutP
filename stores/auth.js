@@ -9,184 +9,68 @@ export const useAuthStore = defineStore('auth', {
     refreshPromise: null,
     refreshTimer: null,
     socketToken: null,
-    csrfToken: null, // CSRF token için yeni state
+    csrfToken: null,
+    sessionValidationTimer: null,
   }),
 
   getters: {
-    authenticated: (state) => {
-      // Eğer state.user varsa, kullanıcı giriş yapmış demektir
-      if (state.user) {
-        return true;
-      }
-
-      // Eğer tarayıcı ortamındaysak ve localStorage'da user bilgisi varsa
-      if (process.client) {
-        try {
-          const userJson = localStorage.getItem('user');
-          if (userJson) {
-            // Geçerli bir JSON olup olmadığını kontrol et
-            const user = JSON.parse(userJson);
-            if (user && user._id) {
-              return true;
-            }
-          }
-        } catch (e) {
-          console.error('Error checking authenticated status:', e);
-          // Hatalı JSON varsa localStorage'dan temizle
-          localStorage.removeItem('user');
-        }
-      }
-
-      return false;
-    },
+    authenticated: (state) => !!state.user,
     isInitialized: (state) => state.initialized,
-    // Token getter'ı ekle - token'a kolay erişim için
+    
     token: (state) => {
-      // Loglama ekleyelim
-      console.log('Token getter çağrıldı, state.user:', state.user ? 'mevcut' : 'yok');
+      if (state.user?.token) return state.user.token;
       
-      if (state.user?.token) {
-        console.log('Token state.user.token\'dan alındı');
-        return state.user.token;
+      if (!import.meta.client) return null;
+      
+      try {
+        const userJson = localStorage.getItem('user');
+        if (!userJson) return null;
+        return JSON.parse(userJson)?.token ?? null;
+      } catch (error) {
+        console.error('Error getting token from localStorage:', error);
+        return null;
       }
-      
-      // localStorage'dan token'ı almayı dene
-      if (process.client) {
-        try {
-          const userJson = localStorage.getItem('user');
-          console.log('localStorage user:', userJson ? 'mevcut' : 'yok');
-          
-          if (userJson) {
-            const user = JSON.parse(userJson);
-            if (user && user.token) {
-              console.log('Token localStorage\'dan alındı');
-              return user.token;
-            }
-          }
-        } catch (e) {
-          console.error('Error getting token from localStorage:', e);
-        }
-      }
-      
-      // Cookie'den token'ı almayı dene
-      if (process.client) {
-        try {
-          const cookies = document.cookie.split(';');
-          for (const cookie of cookies) {
-            const [name, value] = cookie.trim().split('=');
-            if (name === 'auth_token') {
-              console.log('Token cookie\'den alındı');
-              return decodeURIComponent(value);
-            }
-          }
-          // Mevcut tüm cookie'leri logla
-          console.log('Mevcut cookies:', document.cookie);
-        } catch (e) {
-          console.error('Error getting token from cookie:', e);
-        }
-      }
-      
-      console.log('Token bulunamadı, null dönüyor');
-      return null;
     },
-    // Kullanıcı ID'si getter'ı
+    
     userId: (state) => {
-      // Loglama ekleyelim
-      console.log('userId getter çağrıldı, state.user:', state.user ? 'mevcut' : 'yok');
+      if (state.user?._id) return state.user._id;
       
-      if (state.user) {
-        // Önce _id alanını kontrol et
-        if (state.user._id) {
-          console.log('userId state.user._id\'den alındı:', state.user._id);
-          return state.user._id;
-        }
+      if (!import.meta.client) return null;
+      
+      try {
+        const userJson = localStorage.getItem('user');
+        if (!userJson) return null;
+        return JSON.parse(userJson)?._id ?? null;
+      } catch (error) {
+        console.error('Failed to parse user from localStorage:', error);
+        return null;
       }
-      
-      // localStorage'dan ID'yi almayı dene
-      if (process.client) {
-        try {
-          const userJson = localStorage.getItem('user');
-          console.log('localStorage user:', userJson ? 'mevcut' : 'yok');
-          
-          if (userJson) {
-            const user = JSON.parse(userJson);
-            // Önce _id alanını kontrol et
-            if (user && user._id) {
-              console.log('userId localStorage\'dan (_id) alındı:', user._id);
-              return user._id;
-            }
-          }
-        } catch (e) {
-          console.error('Error getting userId from localStorage:', e);
-        }
-      }
-      
-      console.log('userId bulunamadı, null dönüyor');
-      return null;
     }
   },
 
   actions: {
     async initialize() {
       if (this.initialized) return;
+      
       try {
         this.loading = true;
         
-        // CSRF token al
         await this.fetchCsrfToken();
-        console.log('Auth store initialize başladı');
 
-        // Önce localStorage'dan kullanıcı bilgisini kontrol et
-        if (process.client) {
-          const userJson = localStorage.getItem('user');
-          console.log('localStorage user kontrolü:', userJson ? 'mevcut' : 'yok');
-          
-          if (userJson) {
-            try {
-              const user = JSON.parse(userJson);
-              console.log('localStorage\'dan user parse edildi:', user._id ? 'ID mevcut' : 'ID yok');
-              console.log('localStorage\'dan yüklenen user rolü:', user.role);
-              
-              // Rol kontrolü yap ve düzelt
-              if (user.role) {
-                // Eğer role bir string ise, array'e çevir
-                if (typeof user.role === 'string') {
-                  console.log('localStorage\'dan yüklenen role string olarak geldi, array\'e çevriliyor:', user.role);
-                  user.role = [user.role];
-                }
-                
-                // Eğer role undefined veya boş array ise, varsayılan olarak ['user'] ata
-                if (!user.role || user.role.length === 0) {
-                  console.log('localStorage\'dan yüklenen role boş veya tanımsız, varsayılan [user] atanıyor');
-                  user.role = ['user'];
-                }
-                
-                console.log('localStorage\'dan yüklenen son kullanıcı rolü:', user.role);
-              } else {
-                // Role alanı yoksa, varsayılan olarak ['user'] ata
-                console.log('localStorage\'dan yüklenen kullanıcıda role alanı yok, varsayılan [user] atanıyor');
-                user.role = ['user'];
-              }
-              
-              if (user && user._id) {
-                this.user = user; // setUser yerine direkt atama yapıyoruz, çünkü zaten rol kontrolü yaptık
-                // Periyodik token kontrolü başlat
-                this.startTokenRefreshTimer();
-                console.log('localStorage\'dan kullanıcı yüklendi, ID:', user._id, 'role:', user.role);
-              } else {
-                console.warn('localStorage\'daki user objesinde _id alanı yok');
-              }
-            } catch (e) {
-              console.error('Error parsing user from localStorage:', e);
-              localStorage.removeItem('user');
-            }
-          }
+        // Check auth cookie and clear localStorage if needed
+        if (import.meta.client && !this.checkAuthCookie()) {
+          localStorage.removeItem('user');
         }
 
-        // Sonra API'den session kontrolü yap
-        console.log('API\'den session kontrolü yapılıyor');
+        // Load user from localStorage if we're in the browser
+        if (import.meta.client) {
+          this.loadUserFromLocalStorage();
+        }
+
+        // Check session with the server
         await this.checkSession();
 
+        // Setup global error handler for auth-related responses
         this.setupGlobalErrorHandler();
       } catch (error) {
         console.error('Error initializing auth store:', error);
@@ -194,94 +78,161 @@ export const useAuthStore = defineStore('auth', {
       } finally {
         this.initialized = true;
         this.loading = false;
-        console.log('Auth store initialize tamamlandı, user:', this.user ? 'mevcut' : 'yok');
         
         if (this.user) {
-          console.log('User bilgileri:', {
-            id: this.user._id,
+          console.log('User information:', {
+            _id: this.user._id,
             hasToken: !!this.user.token
           });
         }
       }
     },
 
+    loadUserFromLocalStorage() {
+      if (!import.meta.client) return;
+      
+      const userJson = localStorage.getItem('user');
+      if (!userJson) return;
+      
+      try {
+        const user = JSON.parse(userJson);
+        
+        // Normalize role to always be an array
+        if (!user.role) {
+          user.role = ['user'];
+        } else if (typeof user.role === 'string') {
+          user.role = [user.role];
+        } else if (user.role.length === 0) {
+          user.role = ['user'];
+        }
+        
+        if (user._id) {
+          this.user = user;
+          this.startTokenRefreshTimer();
+        } else {
+          console.warn('User object in localStorage has no _id field');
+          localStorage.removeItem('user');
+        }
+      } catch (e) {
+        console.error('Error parsing user from localStorage:', e);
+        localStorage.removeItem('user');
+      }
+    },
+
     async checkSession() {
       try {
-        const { data: session } = await useFetch('/api/auth/session', {
+        // Check session status with server
+        const response = await $fetch('/api/auth/session', {
           credentials: 'include',
         });
 
-        if (session.value?.user) {
-          this.setUser(session.value.user);
+        // If we got user data from server
+        if (response?.user) {
+          console.log('Session valid, user data received:', response.user._id);
+          this.setUser(response.user);
 
-          // Token yenileme gerekiyorsa
-          if (session.value.needsRefresh) {
+          // Refresh token if needed
+          if (response.needsRefresh) {
+            console.log('Token refresh needed');
             await this.refreshToken();
           }
 
-          // Periyodik token kontrolü başlat
+          // Start token refresh timer
           this.startTokenRefreshTimer();
         } else {
-          // API'den kullanıcı bilgisi gelmezse, localStorage'a bak
-          if (process.client) {
-            const userJson = localStorage.getItem('user');
-            if (userJson) {
-              try {
-                console.log(
-                  "API session yok, localStorage'dan kullanıcı bilgisi kullanılıyor",
-                );
-                const user = JSON.parse(userJson);
-                this.setUser(user);
-                this.startTokenRefreshTimer();
-                return; // localStorage'dan kullanıcı bilgisi bulundu, clearUser çağrılmasın
-              } catch (e) {
-                console.error('Error parsing user from localStorage:', e);
-              }
-            }
-          }
+          // No user data from server
+          console.log('No user data received from server, clearing session');
           this.clearUser();
         }
       } catch (error) {
-        console.error('Session check failed:', error);
-
-        // API hatası durumunda localStorage'daki kullanıcı bilgisini kontrol et
-        if (process.client) {
-          const userJson = localStorage.getItem('user');
-          if (userJson) {
-            try {
-              console.log(
-                "API hatası, localStorage'dan kullanıcı bilgisi kullanılıyor",
-              );
-              const user = JSON.parse(userJson);
-              this.setUser(user);
-              this.startTokenRefreshTimer();
-              return; // localStorage'dan kullanıcı bilgisi bulundu, clearUser çağrılmasın
-            } catch (e) {
-              console.error('Error parsing user from localStorage:', e);
-            }
+        console.error('Session check error:', error);
+        
+        // Handle 401 Unauthorized
+        if (error.status === 401) {
+          console.log('401 Unauthorized, clearing session');
+          this.clearUser();
+          return;
+        }
+        
+        // For network errors, try to use cached data
+        if (error.name === 'NetworkError' || error.message?.includes('network')) {
+          console.log('Network error, checking offline mode');
+          
+          // In network error case, keep existing user data if available
+          if (this.user) {
+            console.log('Using cached user data for offline mode');
+            return;
           }
         }
+        
+        // For other errors, clear user
         this.clearUser();
       }
     },
 
     startTokenRefreshTimer() {
-      // Her 14 dakikada bir token'ı yenile (15 dakikalık token süresi varsayılarak)
+      // Refresh token every 14 minutes (assuming 15 minute token lifetime)
       const REFRESH_INTERVAL = 14 * 60 * 1000;
 
+      // Clear existing timer if any
       if (this.refreshTimer) {
         clearInterval(this.refreshTimer);
       }
 
+      // Set token refresh timer
       this.refreshTimer = setInterval(() => {
         if (this.authenticated) {
           this.refreshToken();
         }
       }, REFRESH_INTERVAL);
+      
+      // Start session validation
+      if (import.meta.client) {
+        this.startSessionValidation();
+      }
+    },
+    
+    // Regular session validation check
+    startSessionValidation() {
+      if (!import.meta.client) return;
+      
+      // Check session validity every 2 days
+      const SESSION_VALIDATION_INTERVAL = 2 * 24 * 60 * 60 * 1000;
+      
+      // Clear existing timer if any
+      if (this.sessionValidationTimer) {
+        clearInterval(this.sessionValidationTimer);
+      }
+      
+      this.sessionValidationTimer = setInterval(async () => {
+        if (this.authenticated) {
+          try {
+            // Check session with server
+            const response = await $fetch('/api/auth/session', {
+              method: 'GET',
+              credentials: 'include',
+            });
+            
+            // If no user data, logout
+            if (!response?.user) {
+              console.log('Session validation failed, logging out');
+              this.logout();
+            }
+          } catch (error) {
+            console.error('Session validation error:', error);
+            // If 401, logout
+            if (error.status === 401) {
+              console.log('401 Unauthorized during validation, logging out');
+              this.logout();
+            }
+            // Do not logout on network errors
+          }
+        }
+      }, SESSION_VALIDATION_INTERVAL);
     },
 
     async refreshToken() {
-      // Eğer zaten bir yenileme işlemi varsa onu bekle
+      // If there's already a refresh in progress, wait for it
       if (this.refreshPromise) {
         return this.refreshPromise;
       }
@@ -298,7 +249,7 @@ export const useAuthStore = defineStore('auth', {
         }
         return true;
       } catch (error) {
-        console.error('Token yenileme hatası:', error);
+        console.error('Token refresh error:', error);
         this.clearUser();
         return false;
       } finally {
@@ -311,7 +262,7 @@ export const useAuthStore = defineStore('auth', {
       this.error = null;
 
       try {
-        // Önce CSRF token'i kontrol et, yoksa al
+        // Ensure we have a CSRF token
         if (!this.csrfToken) {
           await this.fetchCsrfToken();
         }
@@ -333,20 +284,19 @@ export const useAuthStore = defineStore('auth', {
         return false;
       } catch (error) {
         console.error('Login error:', error);
-        this.error = error.data?.message || 'Giriş yapılırken bir hata oluştu';
+        this.error = error.data?.message || 'Error during login';
         return false;
       } finally {
         this.loading = false;
       }
     },
 
-    // Yeni eklenen register metodu
     async register(userData) {
       this.loading = true;
       this.error = null;
 
       try {
-        // Önce CSRF token'i kontrol et, yoksa al
+        // Ensure we have a CSRF token
         if (!this.csrfToken) {
           await this.fetchCsrfToken();
         }
@@ -360,62 +310,73 @@ export const useAuthStore = defineStore('auth', {
           }
         });
 
-        // Kayıt başarılı ve kullanıcı bilgileri döndüyse, otomatik giriş yap
+        // If registration successful and user data returned, auto-login
         if (response?.success && response?.user) {
-          console.log('[AuthStore] register - Kayıt başarılı, otomatik giriş yapılıyor');
-          // setUser ile kullanıcı bilgilerini ayarla (bu otomatik olarak localStorage'a da kaydeder)
+          console.log('[AuthStore] register - Registration successful, auto-login');
           this.setUser(response.user);
-          // Token kontrolü için zamanlayıcıyı başlat
           this.startTokenRefreshTimer();
         }
 
         return response;
       } catch (error) {
         console.error('Register error:', error);
-        this.error = error.data?.message || 'Kayıt olurken bir hata oluştu';
+        this.error = error.data?.message || 'Error during registration';
         throw error;
       } finally {
         this.loading = false;
       }
     },
 
-    // Yeni eklenen logout metodu
     async logout() {
       try {
-        // Önce CSRF token'i kontrol et, yoksa al
+        console.log('Starting logout process...');
+        
+        // Ensure we have a CSRF token
         if (!this.csrfToken) {
           await this.fetchCsrfToken();
         }
         
-        await $fetch('/api/auth/logout', {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'X-CSRF-Token': this.csrfToken
-          }
-        });
-
-        this.clearUser();
-        this.clearSocketToken();
-
-        // Token yenileme zamanlayıcısını durdur
-        if (this.refreshTimer) {
-          clearInterval(this.refreshTimer);
-          this.refreshTimer = null;
+        // Clear cookies on server
+        try {
+          await $fetch('/api/auth/logout', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'X-CSRF-Token': this.csrfToken
+            }
+          });
+          console.log('Server-side cookies cleared');
+        } catch (serverError) {
+          console.error('Server logout error:', serverError);
+          // Continue with client-side cleanup even if server call fails
         }
 
-        // CSRF token'i temizle
+        // Client-side cleanup
+        this.clearUser();
+        this.clearSocketToken();
         this.csrfToken = null;
+        
+        console.log('All session data cleared');
 
-        // Yönlendirme işlemi
-        if (process.client) {
+        // Handle redirect
+        if (import.meta.client) {
+          // Try to manually clear browser cookies
+          document.cookie = 'auth_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+          document.cookie = 'refresh_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+          console.log('Browser cookies manually cleared');
+          
           window.location.href = '/login';
         }
 
         return true;
       } catch (error) {
         console.error('Logout error:', error);
-        this.error = error.data?.message || 'Çıkış yapılırken bir hata oluştu';
+        this.error = error.data?.message || 'Error during logout';
+        
+        // Clean up anyway
+        this.clearUser();
+        this.clearSocketToken();
+        
         return false;
       }
     },
@@ -423,37 +384,27 @@ export const useAuthStore = defineStore('auth', {
     setUser(user) {
       if (!user) return;
       
-      console.log('setUser çağrıldı, user:', JSON.stringify(user));
+      console.log('setUser called, user:', JSON.stringify(user));
       
-      // Kullanıcı rolü kontrolü ve düzeltme
-      if (user.role) {
-        // Eğer role bir string ise, array'e çevir
-        if (typeof user.role === 'string') {
-          console.log('Role string olarak geldi, array\'e çevriliyor:', user.role);
-          user.role = [user.role];
-        }
-        
-        // Eğer role undefined veya null ise, varsayılan olarak ['user'] ata
-        if (!user.role || user.role.length === 0) {
-          console.log('Role boş veya tanımsız, varsayılan [user] atanıyor');
-          user.role = ['user'];
-        }
-        
-        console.log('Son kullanıcı rolü:', user.role);
-      } else {
-        // Role alanı yoksa, varsayılan olarak ['user'] ata
-        console.log('Role alanı yok, varsayılan [user] atanıyor');
+      // Normalize user role
+      if (!user.role) {
+        user.role = ['user'];
+      } else if (typeof user.role === 'string') {
+        user.role = [user.role];
+      } else if (user.role.length === 0) {
         user.role = ['user'];
       }
       
-      // Kullanıcı bilgisini state'e kaydet
+      console.log('Final user role:', user.role);
+      
+      // Save user to state
       this.user = user;
       
-      // localStorage'a kaydet
-      if (process.client) {
+      // Save to localStorage
+      if (import.meta.client) {
         try {
           localStorage.setItem('user', JSON.stringify(user));
-          console.log('User localStorage\'a kaydedildi, _id:', user._id, 'role:', user.role);
+          console.log('User saved to localStorage, _id:', user._id, 'role:', user.role);
         } catch (e) {
           console.error('Error saving user to localStorage:', e);
         }
@@ -461,22 +412,79 @@ export const useAuthStore = defineStore('auth', {
     },
 
     clearUser() {
+      console.log('clearUser called, clearing all session data');
       this.user = null;
       this.error = null;
 
-      // User bilgisini localStorage'dan sil
-      if (process.client) {
+      // Clear user from localStorage
+      if (import.meta.client) {
         try {
           localStorage.removeItem('user');
+          console.log('User removed from localStorage');
         } catch (e) {
           console.error('Error removing user from localStorage:', e);
         }
       }
+      
+      // Clear all timers
+      if (this.refreshTimer) {
+        clearInterval(this.refreshTimer);
+        this.refreshTimer = null;
+        console.log('Token refresh timer stopped');
+      }
+      
+      if (this.sessionValidationTimer) {
+        clearInterval(this.sessionValidationTimer);
+        this.sessionValidationTimer = null;
+        console.log('Session validation timer stopped');
+      }
     },
     
-    // CSRF token'i yenile
+    // Refresh CSRF token
     async refreshCsrfToken() {
       return await this.fetchCsrfToken();
+    },
+    
+    // Check for auth cookie
+    checkAuthCookie() {
+      if (!import.meta.client) return false;
+      
+      try {
+        const cookies = document.cookie.split(';');
+        for (const cookie of cookies) {
+          const [name, value] = cookie.trim().split('=');
+          if (name === 'auth_token' && value) {
+            console.log('auth_token cookie found');
+            return true;
+          }
+        }
+        console.log('auth_token cookie not found');
+        return false;
+      } catch (e) {
+        console.error('Cookie check error:', e);
+        return false;
+      }
+    },
+    
+    // Check for refresh cookie
+    checkRefreshCookie() {
+      if (!import.meta.client) return false;
+
+      try {
+        const cookies = document.cookie.split(';');
+        for (const cookie of cookies) {
+          const [name, value] = cookie.trim().split('=');
+          if (name === 'refresh_token' && value) {
+            console.log('refresh_token cookie found');
+            return true;
+          }
+        }
+        console.log('refresh_token cookie not found');
+        return false;
+      } catch (e) {
+        console.error('Cookie check error (refresh):', e);
+        return false;
+      }
     },
 
     setError(error) {
@@ -484,12 +492,15 @@ export const useAuthStore = defineStore('auth', {
     },
 
     getAuthHeader() {
-      const token = this.token;
-      const headers = {
-        Authorization: token ? `Bearer ${token}` : ''
-      };
+      const headers = {};
       
-      // CSRF token varsa ekle
+      // Add Authorization header if we have a token
+      const token = this.token;
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+      
+      // Add CSRF token if available
       if (this.csrfToken) {
         headers['X-CSRF-Token'] = this.csrfToken;
       }
@@ -497,78 +508,74 @@ export const useAuthStore = defineStore('auth', {
       return headers;
     },
     
-    // CSRF token al
+    // Get CSRF token
     async fetchCsrfToken() {
       try {
-        console.log('CSRF token alınıyor...');
-        const { data } = await useFetch('/api/auth/csrf-token', {
+        console.log('Fetching CSRF token...');
+        const response = await $fetch('/api/auth/csrf-token', {
           method: 'GET',
           credentials: 'include'
         });
         
-        if (data.value?.csrfToken) {
-          console.log('CSRF token alındı');
-          this.csrfToken = data.value.csrfToken;
-          return data.value.csrfToken;
+        if (response?.csrfToken) {
+          console.log('CSRF token received');
+          this.csrfToken = response.csrfToken;
+          return response.csrfToken;
         } else {
-          console.error('CSRF token alınamadı');
+          console.error('Failed to get CSRF token');
           return null;
         }
       } catch (error) {
-        console.error('CSRF token alınırken hata:', error);
+        console.error('Error fetching CSRF token:', error);
         return null;
       }
     },
+    
     setupGlobalErrorHandler() {
-      // Tarayıcı ortamında çalışıyorsa
-      if (process.client) {
-        // Fetch hatalarını yakala
-        const originalFetch = window.fetch;
-        window.fetch = async (...args) => {
-          try {
-            const response = await originalFetch(...args);
+      // Only run in browser
+      if (!import.meta.client) return;
+      
+      // Intercept fetch calls
+      const originalFetch = window.fetch;
+      window.fetch = async (...args) => {
+        try {
+          const response = await originalFetch(...args);
 
-            // API yanıtı 401 (Unauthorized) ise ve kullanıcı giriş yapmışsa
-            if (response.status === 401 && this.authenticated) {
-              try {
-                const data = await response.clone().json();
+          // If response is 401 and user is authenticated
+          if (response.status === 401 && this.authenticated) {
+            try {
+              const data = await response.clone().json();
 
-                // Oturum süresi dolduğunda
-                if (
-                  data.message &&
-                  data.message.includes('Oturum süresi doldu')
-                ) {
-                  console.warn('Session expired, logging out automatically');
-                  this.clearUser();
+              // Check for session expiration message
+              if (data.message && data.message.includes('Session expired')) {
+                console.warn('Session expired, logging out automatically');
+                this.clearUser();
 
-                  // Kullanıcıyı bilgilendir
-                  const toast = useToast();
-                  if (toast) {
-                    toast.warning(
-                      'Oturum süreniz doldu, lütfen tekrar giriş yapın',
-                    );
-                  }
-
-                  // Login sayfasına yönlendir
-                  window.location.href = '/login';
+                // Notify user
+                const toast = useToast();
+                if (toast) {
+                  toast.warning('Your session has expired, please login again');
                 }
-              } catch (e) {
-                // JSON parse hatası olabilir, yoksay
-              }
-            }
 
-            return response;
-          } catch (error) {
-            console.error('Fetch error:', error);
-            throw error;
+                // Redirect to login
+                window.location.href = '/login';
+              }
+            } catch (e) {
+              // Ignore JSON parse errors
+            }
           }
-        };
-      }
+
+          return response;
+        } catch (error) {
+          console.error('Fetch error:', error);
+          throw error;
+        }
+      };
     },
 
     async getSocketToken() {
       try {
-        // Request a socket token from our dedicated endpoint
+        // Request socket token from server
         console.log('Requesting socket token from server');
         const response = await $fetch('/api/auth/socket-token', {
           method: 'GET',
@@ -581,7 +588,7 @@ export const useAuthStore = defineStore('auth', {
           return response.token;
         }
 
-        // If server doesn't provide a token, create a simple one
+        // If server doesn't provide a token, create a fallback
         console.log('Creating fallback socket token');
         if (!this.user || !this.user._id) {
           console.error('Cannot create fallback token: User not authenticated');
@@ -589,7 +596,6 @@ export const useAuthStore = defineStore('auth', {
         }
 
         // Create a simple JWT-like token with the user ID
-        // This is just a fallback and should be replaced with a proper server-generated token
         const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
         const now = Math.floor(Date.now() / 1000);
         const payload = btoa(
@@ -607,7 +613,7 @@ export const useAuthStore = defineStore('auth', {
       } catch (error) {
         console.error('Error getting socket token:', error);
 
-        // Create a fallback token as a last resort
+        // Create a simple fallback token as last resort
         if (this.user && this.user._id) {
           const fallbackToken = `fallback.${btoa(this.user._id)}.${Date.now()}`;
           this.socketToken = fallbackToken;
@@ -618,7 +624,7 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    // Clear socket token when logging out
+    // Clear socket token
     clearSocketToken() {
       this.socketToken = null;
     },

@@ -96,6 +96,127 @@ class UserService {
       throw error;
     }
   }
+  
+  /**
+   * Kullanıcıları filtreleme
+   * @param {Object} filters - Filtreleme kriterleri (role, status, dateFrom, dateTo)
+   * @param {number} limit - Sonuç limiti
+   * @returns {Promise<Object>} - Filtrelenmiş kullanıcı listesi
+   */
+  async filterUsers(filters, limit = 100) {
+    try {
+      // Filtreleme koşullarını oluştur
+      const filterConditions = {};
+      
+      // Rol filtresi
+      if (filters.role) {
+        filterConditions.role = filters.role;
+      }
+      
+      // Durum filtresi (aktif/pasif)
+      if (filters.status === 'active') {
+        filterConditions.isActive = true;
+      } else if (filters.status === 'inactive') {
+        filterConditions.isActive = false;
+      }
+      
+      // Tarih aralığı filtresi
+      if (filters.dateFrom || filters.dateTo) {
+        filterConditions.createdAt = {};
+        
+        if (filters.dateFrom) {
+          filterConditions.createdAt.$gte = new Date(filters.dateFrom);
+        }
+        
+        if (filters.dateTo) {
+          filterConditions.createdAt.$lte = new Date(filters.dateTo);
+        }
+      }
+      
+      // Filtreleme sorgusunu çalıştır
+      const users = await User.find(filterConditions)
+        .select('-password -__v')
+        .limit(limit);
+      
+      return {
+        users: users
+      };
+    } catch (error) {
+      console.error('Kullanıcı filtreleme hatası:', error);
+      throw new Error('Kullanıcılar filtrelenirken bir hata oluştu');
+    }
+  }
+  
+  /**
+   * Kullanıcıları hem arama hem filtreleme
+   * @param {string} query - Arama sorgusu
+   * @param {Object} filters - Filtreleme kriterleri
+   * @param {number} limit - Sonuç limiti
+   * @returns {Promise<Object>} - Filtrelenmiş ve aranmış kullanıcı listesi
+   */
+  async filterAndSearchUsers(query, filters, limit = 100) {
+    try {
+      if (!query || query.length < 2) {
+        throw new Error('Arama sorgusu en az 2 karakter olmalıdır');
+      }
+      
+      // Arama koşulları
+      const searchConditions = {
+        $or: [
+          { name: { $regex: query, $options: 'i' } },
+          { email: { $regex: query, $options: 'i' } },
+        ],
+      };
+      
+      // Filtreleme koşulları
+      const filterConditions = {};
+      
+      // Rol filtresi
+      if (filters.role) {
+        filterConditions.role = filters.role;
+      }
+      
+      // Durum filtresi
+      if (filters.status === 'active') {
+        filterConditions.isActive = true;
+      } else if (filters.status === 'inactive') {
+        filterConditions.isActive = false;
+      }
+      
+      // Tarih aralığı filtresi
+      if (filters.dateFrom || filters.dateTo) {
+        filterConditions.createdAt = {};
+        
+        if (filters.dateFrom) {
+          filterConditions.createdAt.$gte = new Date(filters.dateFrom);
+        }
+        
+        if (filters.dateTo) {
+          filterConditions.createdAt.$lte = new Date(filters.dateTo);
+        }
+      }
+      
+      // Arama ve filtreleme koşullarını birleştir
+      const combinedConditions = {
+        $and: [
+          searchConditions,
+          filterConditions
+        ]
+      };
+      
+      // Sorguyu çalıştır
+      const users = await User.find(combinedConditions)
+        .select('-password -__v')
+        .limit(limit);
+      
+      return {
+        users: users
+      };
+    } catch (error) {
+      console.error('Kullanıcı arama ve filtreleme hatası:', error);
+      throw new Error('Kullanıcılar aranırken ve filtrelenirken bir hata oluştu');
+    }
+  }
 
   async deleteUser(event) {
     try {
@@ -112,31 +233,46 @@ class UserService {
    * Kullanıcı ara
    * @param {string} query - Arama sorgusu
    * @param {number} limit - Sonuç limiti
-   * @param {string} currentUserId - Mevcut kullanıcı ID (kendisini hariç tutmak için)
+   * @param {string} currentUserId - Mevcut kullanıcı ID (kendisini hariç tutmak için, opsiyonel)
    * @returns {Promise<Array>} - Kullanıcı listesi
    */
-  async searchUsers(query, limit = 10, currentUserId) {
+  async searchUsers(query, limit = 10, currentUserId = null) {
     try {
       if (!query || query.length < 2) {
         throw new Error('Arama sorgusu en az 2 karakter olmalıdır');
       }
 
-      // getMongoClient kullanımını kaldır ve doğrudan mongoose ile sorgu yap
-      const users = await User.find({
-        $and: [
-          { _id: { $ne: currentUserId } }, // Mevcut kullanıcıyı hariç tut
-          {
-            $or: [
-              { name: { $regex: query, $options: 'i' } },
-              { email: { $regex: query, $options: 'i' } },
-            ],
-          },
+      // Sorgu koşullarını oluştur
+      let searchConditions = {
+        $or: [
+          { name: { $regex: query, $options: 'i' } },
+          { email: { $regex: query, $options: 'i' } },
         ],
-      })
-        .select('name email avatar isOnline lastSeen')
+      };
+      
+      // Eğer currentUserId belirtilmişse, o kullanıcıyı hariç tut
+      if (currentUserId) {
+        searchConditions = {
+          $and: [
+            { _id: { $ne: currentUserId } },
+            searchConditions
+          ]
+        };
+      }
+
+      // Kullanıcıları ara
+      const users = await User.find(searchConditions)
+        .select('-password -__v')
         .limit(limit);
 
-      // Arkadaşlık durumlarını kontrol et
+      // Admin paneli için kullanılıyorsa, tüm kullanıcıları döndür
+      if (!currentUserId) {
+        return {
+          users: users
+        };
+      }
+      
+      // Sosyal ağ özellikleri için arkadaşlık durumlarını kontrol et
       const friendships = await Friendship.find({
         $or: [
           {

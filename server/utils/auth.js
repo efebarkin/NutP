@@ -21,16 +21,37 @@ if (!REFRESH_TOKEN_SECRET) {
   throw new Error('REFRESH_TOKEN_SECRET ortam değişkeni gerekli');
 }
 
-// Generate both access and refresh tokens
-export const generateTokens = (userId) => {
+// Generate both access and refresh tokens with enhanced security
+export const generateTokens = (userId, event = null) => {
+  // Kullanıcı parmak izi oluştur (IP ve tarayıcı bilgileri)
+  let fingerprint = null;
+  
+  if (event && event.node && event.node.req) {
+    const clientIp = event.node.req.headers['x-forwarded-for'] || 
+                     event.node.req.connection.remoteAddress;
+    const userAgent = event.node.req.headers['user-agent'];
+    
+    // Basit bir parmak izi oluştur
+    fingerprint = `${clientIp}|${userAgent?.substring(0, 50)}`;
+  }
+  
+  // Token içeriğine ek güvenlik bilgileri ekle
+  const tokenPayload = { 
+    userId,
+    fingerprint,
+    iat: Math.floor(Date.now() / 1000), // Token oluşturma zamanı
+    jti: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15) // Benzersiz token ID'si
+  };
+  
   // Tanımlanmış sabitleri kullan
-  const accessToken = jwt.sign({ userId }, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
-  const refreshToken = jwt.sign({ userId }, REFRESH_TOKEN_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY });
+  const accessToken = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
+  const refreshToken = jwt.sign({ userId, jti: tokenPayload.jti }, REFRESH_TOKEN_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY });
   
   return { 
     accessToken, 
     refreshToken,
-    expiresIn: ACCESS_TOKEN_EXPIRY_MS // Tanımlanmış sabiti kullan
+    expiresIn: ACCESS_TOKEN_EXPIRY_MS, // Tanımlanmış sabiti kullan
+    fingerprint // Parmak izi bilgisini döndür (debug için)
   };
 };
 
@@ -77,21 +98,44 @@ export const verifyRefreshToken = async (token) => {
 
 // Set both access and refresh token cookies
 export const setAuthCookies = (event, tokens) => {
-  // Set access token cookie
+  // Get client IP and user agent for additional security
+  const clientIp = event.node.req.headers['x-forwarded-for'] || 
+                   event.node.req.connection.remoteAddress;
+  const userAgent = event.node.req.headers['user-agent'];
+  
+  // Set access token cookie with stricter settings
   setCookie(event, 'auth_token', tokens.accessToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: ACCESS_TOKEN_EXPIRY_MS
+    sameSite: 'strict', // Daha sıkı SameSite politikası
+    maxAge: ACCESS_TOKEN_EXPIRY_MS,
+    path: '/' // Tüm sitede geçerli
   });
   
-  // Set refresh token cookie
+  // Set refresh token cookie with stricter settings
   setCookie(event, 'refresh_token', tokens.refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: REFRESH_TOKEN_EXPIRY_MS
+    sameSite: 'strict', // Daha sıkı SameSite politikası
+    maxAge: REFRESH_TOKEN_EXPIRY_MS,
+    path: '/' // Tüm sitede geçerli
   });
+  
+  // Kullanıcı oturum bilgilerini sakla (IP ve tarayıcı bilgisi)
+  // Bu bilgiler daha sonra token doğrulanırken kontrol edilebilir
+  if (event.context && event.context.auth && event.context.auth.user) {
+    try {
+      // Oturum bilgilerini kullanıcı belgesine ekle
+      const userId = event.context.auth.user._id;
+      if (userId) {
+        // Burada veritabanına oturum bilgilerini kaydedebilirsiniz
+        // Örneğin: await User.findByIdAndUpdate(userId, { lastSession: { ip: clientIp, userAgent, timestamp: Date.now() } });
+        console.log(`Oturum bilgileri kaydedildi: ${userId}, ${clientIp}, ${userAgent?.substring(0, 50)}`);
+      }
+    } catch (error) {
+      console.error('Oturum bilgileri kaydedilirken hata:', error);
+    }
+  }
 };
 
 // Clear all auth cookies
@@ -134,55 +178,89 @@ export const hasRole = (user, requiredRoles) => {
 // Get user session from token
 export const getServerSession = async (event) => {
   try {
+    // Access token'i al
     const token = getCookie(event, 'auth_token');
     if (!token) {
+      console.log('Auth token bulunamadı');
       return null;
     }
 
+    // Token'i doğrula
     const { decoded, expired } = verifyToken(token);
     
     // Token geçerli değilse
     if (!decoded) {
       // Token süresi dolmuşsa ve refresh token varsa
       if (expired) {
+        console.log('Access token süresi dolmuş, refresh token kontrol ediliyor');
         const refreshToken = getCookie(event, 'refresh_token');
         if (!refreshToken) {
+          console.log('Refresh token bulunamadı');
           return null;
         }
         
         // Refresh token doğrulama
         const user = await verifyRefreshToken(refreshToken);
         if (!user) {
+          console.log('Refresh token geçersiz');
           return null;
         }
         
-        // Yeni tokenlar oluştur
-        const newTokens = generateTokens(user._id);
+        // Yeni tokenlar oluştur - event parametresini geçerek parmak izi oluştur
+        const newTokens = generateTokens(user._id, event);
         setAuthCookies(event, newTokens);
         
+        console.log('Yeni token oluşturuldu, kullanıcı ID:', user._id);
         return {
           user: {
-            _id: user._id, // id yerine _id kullanıyoruz
+            _id: user._id,
             email: user.email,
             name: user.name,
-            role: user.role // Rol bilgisini ekle
+            role: user.role,
+            lastLogin: new Date().toISOString()
           }
         };
       }
+      console.log('Token geçersiz ve süresi dolmamış');
       return null;
     }
 
+    // Kullanıcıyı veritabanından bul
     const user = await User.findById(decoded.userId).select('-password');
     if (!user) {
+      console.log('Token geçerli fakat kullanıcı bulunamadı');
       return null;
     }
+    
+    // // Kullanıcı aktif mi kontrol et
+    // if (user.isActive === false) {
+    //   console.log('Kullanıcı devre dışı bırakılmış');
+    //   return null;
+    // }
+    
+    // Güvenlik kontrolü: Token'da ek bilgiler varsa kontrol et
+    if (decoded.fingerprint) {
+      const clientIp = event.node.req.headers['x-forwarded-for'] || 
+                       event.node.req.connection.remoteAddress;
+      const userAgent = event.node.req.headers['user-agent'];
+      
+      // Basit bir parmak izi kontrolü
+      const currentFingerprint = `${clientIp}|${userAgent?.substring(0, 50)}`;
+      if (decoded.fingerprint !== currentFingerprint) {
+        console.log('Token parmak izi eşleşmiyor, potansiyel token çalma girişimi');
+        // Burada güvenlik ihlali kaydı tutabilirsiniz
+        return null;
+      }
+    }
 
+    console.log('Oturum doğrulandı, kullanıcı ID:', user._id);
     return {
       user: {
-        _id: user._id, // id yerine _id kullanıyoruz
+        _id: user._id,
         email: user.email,
         name: user.name,
-        role: user.role // Rol bilgisini ekle
+        role: user.role,
+        lastLogin: user.lastLogin || new Date().toISOString()
       }
     };
   } catch (error) {

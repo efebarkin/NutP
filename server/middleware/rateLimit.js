@@ -8,7 +8,7 @@ import { defineEventHandler, createError } from 'h3';
 // Üretim ortamında Redis gibi bir çözüm kullanmak daha iyi olur
 const ipRequests = new Map();
 const windowMs = 15 * 60 * 1000; // 15 dakika
-const maxRequests = 100; // 15 dakikada maksimum 100 istek
+const maxRequests = 1000; // 15 dakikada maksimum 100 istek
 
 // Periyodik olarak eski kayıtları temizle
 setInterval(() => {

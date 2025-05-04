@@ -1,6 +1,6 @@
-import { defineEventHandler } from 'h3';
-import authService from '~/server/services/authService';
+import { defineAuthenticatedHandler } from '~/server/utils/auth';
+import { getServerSession } from '~/server/utils/auth';
 
-export default defineEventHandler(async (event) => {
-  return authService.session(event);
+export default defineAuthenticatedHandler(async (event) => {
+  return await getServerSession(event);
 });

@@ -17,6 +17,10 @@ export default defineNuxtConfig({
     '~/plugins/csrf.js' // CSRF token plugin'i ekle
   ],
   app: {
+    layoutTransition: {
+      name: 'admin-page',
+      mode: 'out-in'
+    },
     head: {
       title: 'NutP',
       titleTemplate: '%s | pt.com',
@@ -54,6 +58,7 @@ export default defineNuxtConfig({
   },
   css: [
     '@/assets/css/main.css',
+    '@/assets/css/admin-transitions.css',
   ],
   build: {
     transpile: ['vue-toastification'],
