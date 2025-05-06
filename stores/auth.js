@@ -3,14 +3,15 @@ import { defineStore } from 'pinia';
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null,
+    accessToken: null, // Store access token in memory only
     initialized: false,
     loading: false,
     error: null,
-    refreshPromise: null,
-    refreshTimer: null,
-    socketToken: null,
     csrfToken: null,
+    tokenRefreshTimer: null,
     sessionValidationTimer: null,
+    lastValidated: null,
+    validationInterval: 1000 * 60 * 60 * 24 * 2, // 2 days
   }),
 
   getters: {
@@ -18,14 +19,14 @@ export const useAuthStore = defineStore('auth', {
     isInitialized: (state) => state.initialized,
     
     token: (state) => {
-      if (state.user?.token) return state.user.token;
+      if (state.accessToken) return state.accessToken;
       
       if (!import.meta.client) return null;
       
       try {
         const userJson = localStorage.getItem('user');
         if (!userJson) return null;
-        return JSON.parse(userJson)?.token ?? null;
+        return JSON.parse(userJson)?.accessToken ?? null;
       } catch (error) {
         console.error('Error getting token from localStorage:', error);
         return null;
@@ -82,7 +83,7 @@ export const useAuthStore = defineStore('auth', {
         if (this.user) {
           console.log('User information:', {
             _id: this.user._id,
-            hasToken: !!this.user.token
+            hasToken: !!this.accessToken
           });
         }
       }
@@ -175,12 +176,12 @@ export const useAuthStore = defineStore('auth', {
       const REFRESH_INTERVAL = 14 * 60 * 1000;
 
       // Clear existing timer if any
-      if (this.refreshTimer) {
-        clearInterval(this.refreshTimer);
+      if (this.tokenRefreshTimer) {
+        clearInterval(this.tokenRefreshTimer);
       }
 
       // Set token refresh timer
-      this.refreshTimer = setInterval(() => {
+      this.tokenRefreshTimer = setInterval(() => {
         if (this.authenticated) {
           this.refreshToken();
         }
@@ -240,17 +241,25 @@ export const useAuthStore = defineStore('auth', {
       try {
         this.refreshPromise = $fetch('/api/auth/refresh', {
           method: 'POST',
-          credentials: 'include',
+          credentials: 'include', // Send HttpOnly refresh token cookie
         });
 
         const response = await this.refreshPromise;
-        if (response?.user) {
-          this.setUser(response.user);
+        if (response.accessToken) {
+          // Update the in-memory access token
+          this.accessToken = response.accessToken;
+          
+          // Update user data if provided
+          if (response.user) {
+            const { accessToken, refreshToken, ...userData } = response.user;
+            this.setUser(userData);
+          }
+          
+          return true;
         }
-        return true;
+        return false;
       } catch (error) {
         console.error('Token refresh error:', error);
-        this.clearUser();
         return false;
       } finally {
         this.refreshPromise = null;
@@ -270,14 +279,19 @@ export const useAuthStore = defineStore('auth', {
         const response = await $fetch('/api/auth/login', {
           method: 'POST',
           body: { email, password },
-          credentials: 'include',
+          credentials: 'include', // This ensures cookies are sent/received
           headers: {
             'X-CSRF-Token': this.csrfToken
           }
         });
 
         if (response?.user) {
-          this.setUser(response.user);
+          console.log('Login successful, user:', response.user);
+          // Store access token in memory only
+          this.accessToken = response.user.accessToken;
+          // Store user data without sensitive tokens
+          const { accessToken, refreshToken, ...userData } = response.user;
+          this.setUser(userData);
           this.startTokenRefreshTimer();
           return true;
         }
@@ -304,7 +318,7 @@ export const useAuthStore = defineStore('auth', {
         const response = await $fetch('/api/auth/register', {
           method: 'POST',
           body: userData,
-          credentials: 'include',
+          credentials: 'include', // This ensures cookies are sent/received
           headers: {
             'X-CSRF-Token': this.csrfToken
           }
@@ -313,7 +327,11 @@ export const useAuthStore = defineStore('auth', {
         // If registration successful and user data returned, auto-login
         if (response?.success && response?.user) {
           console.log('[AuthStore] register - Registration successful, auto-login');
-          this.setUser(response.user);
+          // Store access token in memory only
+          this.accessToken = response.user.accessToken;
+          // Store user data without sensitive tokens
+          const { accessToken, refreshToken, ...userData } = response.user;
+          this.setUser(userData);
           this.startTokenRefreshTimer();
         }
 
@@ -384,8 +402,6 @@ export const useAuthStore = defineStore('auth', {
     setUser(user) {
       if (!user) return;
       
-      console.log('setUser called, user:', JSON.stringify(user));
-      
       // Normalize user role
       if (!user.role) {
         user.role = ['user'];
@@ -395,16 +411,20 @@ export const useAuthStore = defineStore('auth', {
         user.role = ['user'];
       }
       
-      console.log('Final user role:', user.role);
-      
-      // Save user to state
+      // Save user to state (without tokens)
       this.user = user;
       
-      // Save to localStorage
+      // Save non-sensitive data to localStorage
       if (import.meta.client) {
         try {
-          localStorage.setItem('user', JSON.stringify(user));
-          console.log('User saved to localStorage, _id:', user._id, 'role:', user.role);
+          // Only store non-sensitive data
+          const localStorageUser = {
+            id: this.user.id || this.user._id,
+            name: this.user.name,
+            role: this.user.role
+          };
+          localStorage.setItem('user', JSON.stringify(localStorageUser));
+          console.log('User saved to localStorage, id:', localStorageUser.id, 'name:', localStorageUser.name);
         } catch (e) {
           console.error('Error saving user to localStorage:', e);
         }
@@ -427,9 +447,9 @@ export const useAuthStore = defineStore('auth', {
       }
       
       // Clear all timers
-      if (this.refreshTimer) {
-        clearInterval(this.refreshTimer);
-        this.refreshTimer = null;
+      if (this.tokenRefreshTimer) {
+        clearInterval(this.tokenRefreshTimer);
+        this.tokenRefreshTimer = null;
         console.log('Token refresh timer stopped');
       }
       
@@ -494,10 +514,9 @@ export const useAuthStore = defineStore('auth', {
     getAuthHeader() {
       const headers = {};
       
-      // Add Authorization header if we have a token
-      const token = this.token;
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
+      // Use the in-memory access token
+      if (this.accessToken) {
+        headers.Authorization = `Bearer ${this.accessToken}`;
       }
       
       // Add CSRF token if available

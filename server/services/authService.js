@@ -10,7 +10,6 @@ class AuthService {
 
     async login(event) {
         try{
-
             const body = await readBody(event);
             //Validation
             const result = loginSchema.safeParse(body);
@@ -45,6 +44,12 @@ class AuthService {
             //Generate tokens with fingerprint (IP ve tarayıcı bilgileri)
             const tokens = generateTokens(user._id, event);
 
+            // Only store refresh token in the database (not access token)
+            // This follows security best practices
+            await User.findByIdAndUpdate(user._id, {
+                refreshToken: tokens.refreshToken
+            });
+
             //Set auth cookies
             setAuthCookies(event, tokens);
                 
@@ -55,7 +60,7 @@ class AuthService {
                     _id: user._id,
                     email: user.email,
                     name: user.name,
-                    role: user.role, // Add role to the response
+                    role: user.role,
                     accessToken: tokens.accessToken,
                     refreshToken: tokens.refreshToken,
                     createdAt: user.createdAt,
@@ -153,8 +158,14 @@ class AuthService {
             });
         
             // Kullanıcı için token oluştur
-            const tokens = generateTokens(user._id);
+            const tokens = generateTokens(user._id, event);
             
+            // Only store refresh token in the database (not access token)
+            // This follows security best practices
+            await User.findByIdAndUpdate(user._id, {
+              refreshToken: tokens.refreshToken
+            });
+        
             // Token'ları cookie'ye kaydet
             setAuthCookies(event, tokens);
         
@@ -163,11 +174,12 @@ class AuthService {
               success: true,
               message: 'Kayıt başarılı',
               user: {
-                id: user._id,
+                _id: user._id,
                 email: user.email,
                 name: user.name,
                 role: user.role,
-                token: tokens.accessToken,
+                accessToken: tokens.accessToken,
+                refreshToken: tokens.refreshToken,
                 createdAt: user.createdAt,
                 updatedAt: user.updatedAt
               }
@@ -229,11 +241,11 @@ class AuthService {
             return { 
               success: true,
               user: {
-                id: user._id,
+                _id: user._id,
                 email: user.email,
                 name: user.name,
                 role: user.role, // Add role to the response
-                token: tokens.accessToken
+                accessToken: tokens.accessToken
               }
             };
           } catch (error) {

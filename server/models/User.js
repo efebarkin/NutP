@@ -52,6 +52,7 @@ const userSchema = new mongoose.Schema({
       message: 'Name must be between 2 and 50 characters',
     },
   },
+  refreshToken: String, // Only store refresh token for revocation purposes
   favoriteFoods: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Food'
@@ -60,7 +61,6 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Meal'
   }],
-  refreshToken: String,
   role: {
     type: [String],
     enum: ['user', 'admin', 'trainer', 'nutritionist'],
