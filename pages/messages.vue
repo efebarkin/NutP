@@ -1,6 +1,5 @@
 <template>
   <div class="container mx-auto py-8 px-4">
-    <AuthCheck>
       <!-- Socket Error Message -->
       <div
         v-if="socketError"
@@ -56,7 +55,6 @@
           />
         </div>
       </div>
-    </AuthCheck>
   </div>
 </template>
 
@@ -65,7 +63,6 @@ import { ref, onMounted, onUnmounted, watch } from 'vue';
 import { useAuthStore } from '~/stores/auth';
 import { useSocketClient } from '~/composables/useSocketClient';
 import { useRouter } from 'vue-router';
-import AuthCheck from '~/components/AuthCheck';
 
 // Router
 const router = useRouter();
