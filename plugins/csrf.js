@@ -76,6 +76,6 @@ export default defineNuxtPlugin(async (nuxtApp) => {
   // Template'lerde kullanılabilecek yardımcı fonksiyonlar
   nuxtApp.provide('csrf', {
     getToken: () => authStore.csrfToken,
-    refreshToken: () => authStore.refreshCsrfToken()
+    refreshToken: () => authStore.fetchCsrfToken()
   });
 });

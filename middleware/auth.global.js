@@ -58,10 +58,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
       }
     } 
     // localStorage'da kullanıcı yok ama store'da varsa
-    else if (!userJson && authStore.user) {
-      console.log('Middleware: localStorage\'da kullanıcı bilgisi yok ama store\'da var, temizleniyor');
-      authStore.clearUser();
-    }
+    // else if (!userJson && authStore.user) { 
+    //   console.log('Middleware: localStorage\'da kullanıcı bilgisi yok ama store\'da var, temizleniyor (COMMENTED OUT)');
+    //   // authStore.clearUser(); // Potentially problematic if session was just re-established by checkSession
+    // } 
   }
   
   // Authenticated durumunu yeniden kontrol et

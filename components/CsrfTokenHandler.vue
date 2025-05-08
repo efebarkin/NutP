@@ -19,7 +19,7 @@ onMounted(async () => {
   // 12 saatte bir token'ı yenile (24 saatlik geçerlilik süresinin yarısı)
   refreshInterval = setInterval(async () => {
     console.log('CSRF token yenileniyor...');
-    await authStore.refreshCsrfToken();
+    await authStore.fetchCsrfToken();
   }, 12 * 60 * 60 * 1000); // 12 saat
 });
 

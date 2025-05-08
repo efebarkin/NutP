@@ -1,6 +1,7 @@
 import UserService from '~/server/services/userService.js';
+import { defineRoleHandler } from '~/server/utils/auth';
 
-export default defineEventHandler(async (event) => {
+export default defineRoleHandler(['admin'], async (event) => {
     // URL'den query parametrelerini al
     const query = getQuery(event);
     const searchTerm = query.search || '';
