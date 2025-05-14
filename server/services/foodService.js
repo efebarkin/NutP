@@ -3,6 +3,7 @@ import FoodDataService from './foodDataService';
 import createError from 'http-errors';
 import { validateFoodId, validateCreateFood, validateUpdateFood } from '../validations/foodValidation';
 import { readBody, getQuery } from 'h3';
+import { filterFoods } from '../utils/foodFilter';
 
 // server/api/foods/uploadPhoto.post.js
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
@@ -240,6 +241,8 @@ class FoodService {
 
       // Build query
       const dbQuery = {};
+      
+      // Temel filtreler
       if (search) {
         dbQuery['$or'] = [
           { 'name.tr': { $regex: search, $options: 'i' } },
@@ -248,6 +251,17 @@ class FoodService {
       }
       if (category) {
         dbQuery.category = category;
+      }
+      
+      // Gelişmiş filtreler
+      const advancedFilters = filterFoods(query);
+      if (advancedFilters && advancedFilters.length > 0) {
+        // Eğer zaten $and varsa, ona ekle
+        if (dbQuery.$and) {
+          dbQuery.$and = [...dbQuery.$and, ...advancedFilters];
+        } else {
+          dbQuery.$and = advancedFilters;
+        }
       }
 
       // Get total count for pagination
@@ -283,7 +297,9 @@ class FoodService {
         stats: {
           categories,
           total
-        }
+        },
+        // Protein kategorileri için istatistik
+        proteinCategories: ['low', 'medium', 'high']
       };
     } catch (error) {
       console.error('Error fetching foods:', error);

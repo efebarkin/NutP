@@ -1,16 +1,10 @@
 <template>
   <div class="min-h-screen bg-gray-50">
     <!-- Hero Section -->
-    <div
-      class="bg-gradient-to-r from-green-500 to-green-600 text-white py-16 relative overflow-hidden"
-    >
+    <div class="bg-gradient-to-r from-green-500 to-green-600 text-white py-16 relative overflow-hidden">
       <div class="absolute inset-0 overflow-hidden">
-        <div
-          class="absolute -right-10 -top-20 w-72 h-72 rounded-full bg-white opacity-10 floating-slow"
-        ></div>
-        <div
-          class="absolute -left-20 -bottom-24 w-96 h-96 rounded-full bg-white opacity-10 floating"
-        ></div>
+        <div class="absolute -right-10 -top-20 w-72 h-72 rounded-full bg-white opacity-10 floating-slow"></div>
+        <div class="absolute -left-20 -bottom-24 w-96 h-96 rounded-full bg-white opacity-10 floating"></div>
       </div>
       <div class="container mx-auto px-4 relative z-10">
         <h1 class="text-4xl md:text-5xl font-bold mb-4 animate-fade-in">Besin Veritabanı</h1>
@@ -51,6 +45,153 @@
               </svg>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Filtreler -->
+      <div class="bg-white rounded-xl shadow-md p-6 mb-8 border border-gray-100 transition-all duration-300 hover:shadow-lg">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-gray-800 flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+            Besin Filtreleri
+          </h3>
+          <button 
+            @click="resetFilters" 
+            class="text-sm text-gray-500 hover:text-green-600 flex items-center transition-colors duration-200"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Filtreleri Sıfırla
+          </button>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <!-- Protein Filtresi -->
+          <div class="space-y-2">
+            <label for="protein" class="block text-sm font-medium text-gray-700 flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              Protein Miktarı
+            </label>
+            <div class="relative">
+              <select
+                v-model="filter.protein"
+                id="protein"
+                class="w-full pl-10 pr-10 py-2 border border-gray-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 appearance-none bg-white"
+              >
+                <option value="">Tümü</option>
+                <option v-for="protein in proteinCategories" :key="protein" :value="protein">
+                  {{ protein === 'low' ? 'Düşük (<10g)' : protein === 'medium' ? 'Orta (10-20g)' : 'Yüksek (>20g)' }}
+                </option>
+              </select>
+              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+              </div>
+              <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Kalori Filtresi -->
+          <div class="space-y-2">
+            <label for="calories" class="block text-sm font-medium text-gray-700 flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              Kalori Aralığı
+            </label>
+            <div class="flex space-x-2">
+              <div class="relative flex-1">
+                <input
+                  v-model="filter.minCalories"
+                  type="number"
+                  placeholder="Min"
+                  class="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
+                />
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <span class="text-gray-400 text-sm">min</span>
+                </div>
+              </div>
+              <div class="relative flex-1">
+                <input
+                  v-model="filter.maxCalories"
+                  type="number"
+                  placeholder="Max"
+                  class="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
+                />
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <span class="text-gray-400 text-sm">max</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Kategori Filtresi -->
+          <div class="space-y-2">
+            <label for="category" class="block text-sm font-medium text-gray-700 flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+              </svg>
+              Besin Kategorisi
+            </label>
+            <div class="relative">
+              <select
+                v-model="selectedCategory"
+                id="category"
+                class="w-full pl-10 pr-10 py-2 border border-gray-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 appearance-none bg-white"
+              >
+                <option value="">Tüm Kategoriler</option>
+                <option v-for="cat in stats.categories" :key="cat._id" :value="cat._id">
+                  {{ cat._id }} ({{ cat.count }})
+                </option>
+              </select>
+              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+              </div>
+              <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Uygula Butonu -->
+        <div class="mt-6 flex justify-end">
+          <button 
+            @click="applyFilters"
+            class="px-6 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg shadow-md hover:from-green-600 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] flex items-center"
+            :disabled="loading"
+          >
+            <svg v-if="loading" class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            {{ loading ? 'Yükleniyor...' : 'Filtreleri Uygula' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Yükleme Göstergesi -->
+      <div v-if="loading" class="flex justify-center items-center py-12 mb-8">
+        <div class="flex flex-col items-center">
+          <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-green-500 mb-4"></div>
+          <p class="text-gray-600 text-lg">Besinler yükleniyor...</p>
         </div>
       </div>
 
@@ -324,275 +465,7 @@
     </div>
 
     <!-- Detay Modalı -->
-    <transition name="modal">
-      <div
-        v-if="selectedFood"
-        class="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center p-4 z-50"
-        @click="selectedFood = null"
-      >
-        <div
-          class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-8 shadow-xl hover-lift"
-          @click.stop
-        >
-          <div class="flex justify-between items-start mb-6">
-            <div class="animate-fade-in">
-              <h2 class="text-2xl font-bold text-gray-900 flex items-center">
-                {{ selectedFood.name.tr }}
-                <span
-                  class="ml-2 px-3 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full badge"
-                >
-                  {{ selectedFood.category }}
-                </span>
-              </h2>
-              <p class="text-gray-600 mt-1">{{ selectedFood.name.en }}</p>
-            </div>
-            <button
-              @click="selectedFood = null"
-              class="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-full transition-colors"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-6 w-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-          </div>
-
-          <div class="space-y-8 animate-slide-in">
-            <!-- Temel Bilgiler -->
-            <div
-              class="bg-gray-50 rounded-xl p-6 hover:shadow-md transition-all duration-300 hover:bg-gray-100"
-            >
-              <h3 class="text-lg font-semibold mb-4 text-green-700 flex items-center">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-5 w-5 mr-2 text-green-500"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                Temel Bilgiler
-              </h3>
-              <div class="grid grid-cols-2 gap-4">
-                <div
-                  class="flex items-center space-x-2 p-2 hover:bg-white rounded-lg transition-colors"
-                >
-                  <span class="text-gray-600 font-medium">Kategori:</span>
-                  <span class="font-semibold text-green-700">{{ selectedFood.category }}</span>
-                </div>
-                <div
-                  class="flex items-center space-x-2 p-2 hover:bg-white rounded-lg transition-colors"
-                >
-                  <span class="text-gray-600 font-medium">Porsiyon:</span>
-                  <span class="font-semibold text-green-700"
-                    >{{ selectedFood.portions[0]?.weight }}g</span
-                  >
-                </div>
-              </div>
-            </div>
-
-            <!-- Makro Besinler -->
-            <div class="animate-fade-in" style="animation-delay: 100ms">
-              <h3 class="text-lg font-semibold mb-4 text-green-700 flex items-center">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-5 w-5 mr-2 text-green-500"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                  />
-                </svg>
-                Makro Besinler
-              </h3>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div
-                  class="bg-white rounded-xl shadow-sm p-4 hover:shadow-md transition-all duration-300 hover:bg-red-50"
-                >
-                  <div class="flex items-center mb-2">
-                    <span class="nutrient-dot dot-energy animate-pulse-slow"></span>
-                    <span class="font-medium text-gray-700">Enerji</span>
-                  </div>
-                  <div class="text-xl font-bold text-gray-900">
-                    {{ selectedFood.nutrients.energy.value }}
-                    <span class="text-sm font-normal text-gray-600">{{
-                      selectedFood.nutrients.energy.unit
-                    }}</span>
-                  </div>
-                </div>
-                <div
-                  class="bg-white rounded-xl shadow-sm p-4 hover:shadow-md transition-all duration-300 hover:bg-blue-50"
-                >
-                  <div class="flex items-center mb-2">
-                    <span class="nutrient-dot dot-protein animate-pulse-slow"></span>
-                    <span class="font-medium text-gray-700">Protein</span>
-                  </div>
-                  <div class="text-xl font-bold text-gray-900">
-                    <span v-if="selectedFood.nutrients && selectedFood.nutrients.protein && selectedFood.nutrients.protein.value !== undefined">
-                      {{ selectedFood.nutrients.protein.value }}
-                      <span class="text-sm font-normal text-gray-600">{{ selectedFood.nutrients.protein.unit }}</span>
-                    </span>
-                    <span v-else>Bilgi yok</span>
-                  </div>
-                </div>
-                <div
-                  class="bg-white rounded-xl shadow-sm p-4 hover:shadow-md transition-all duration-300 hover:bg-yellow-50"
-                >
-                  <div class="flex items-center mb-2">
-                    <span class="nutrient-dot dot-carbs animate-pulse-slow"></span>
-                    <span class="font-medium text-gray-700">Karbonhidrat</span>
-                  </div>
-                  <div class="text-xl font-bold text-gray-900">
-                    <span v-if="selectedFood.nutrients && selectedFood.nutrients.carbohydrate && selectedFood.nutrients.carbohydrate.value !== undefined">
-                        {{ selectedFood.nutrients.carbohydrate.value }}
-                      <span class="text-sm font-normal text-gray-600">{{ selectedFood.nutrients.carbohydrate.unit }}</span>
-                    </span>
-                    <span v-else>Bilgi yok</span>
-                  </div>
-                </div>
-                <div
-                  class="bg-white rounded-xl shadow-sm p-4 hover:shadow-md transition-all duration-300 hover:bg-purple-50"
-                >
-                  <div class="flex items-center mb-2">
-                    <span class="nutrient-dot dot-fat animate-pulse-slow"></span>
-                    <span class="font-medium text-gray-700">Yağ</span>
-                  </div>
-                  <div class="text-xl font-bold text-gray-900">
-                    <span v-if="selectedFood.nutrients && selectedFood.nutrients.fat && selectedFood.nutrients.fat.value !== undefined">
-                        {{ selectedFood.nutrients.fat.value }}
-                      <span class="text-sm font-normal text-gray-600">{{ selectedFood.nutrients.fat.unit }}</span>
-                    </span>
-                    <span v-else>Bilgi yok</span>
-                    <span class="text-sm font-normal text-gray-600">{{
-                      selectedFood.nutrients.fat.unit
-                    }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Diğer bölümler -->
-            <div
-              class="grid grid-cols-1 md:grid-cols-2 gap-8 animate-fade-in"
-              style="animation-delay: 200ms"
-            >
-              <!-- Yağ Profili -->
-              <div>
-                <h3 class="text-lg font-semibold mb-4 text-green-700 flex items-center">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 mr-2 text-green-500"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                    />
-                  </svg>
-                  Yağ Profili
-                </h3>
-                <div class="space-y-3">
-                  <div class="flex justify-between items-center py-2 border-b border-gray-100">
-                    <span class="text-gray-600">Doymuş Yağ</span>
-                    <span class="font-medium"
-                      >{{ selectedFood.nutrients.saturatedFat?.value || 0 }}g</span
-                    >
-                  </div>
-                  <div class="flex justify-between items-center py-2 border-b border-gray-100">
-                    <span class="text-gray-600">Tekli Doymamış</span>
-                    <span class="font-medium"
-                      >{{ selectedFood.nutrients.monounsaturatedFat?.value || 0 }}g</span
-                    >
-                  </div>
-                  <div class="flex justify-between items-center py-2 border-b border-gray-100">
-                    <span class="text-gray-600">Çoklu Doymamış</span>
-                    <span class="font-medium"
-                      >{{ selectedFood.nutrients.polyunsaturatedFat?.value || 0 }}g</span
-                    >
-                  </div>
-                  <div class="flex justify-between items-center py-2">
-                    <span class="text-gray-600">Kolesterol</span>
-                    <span class="font-medium"
-                      >{{ selectedFood.nutrients.cholesterol?.value || 0 }}mg</span
-                    >
-                  </div>
-                </div>
-              </div>
-
-              <!-- Vitaminler ve Mineraller -->
-              <div>
-                <h3 class="text-lg font-semibold mb-4 text-green-700 flex items-center">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 mr-2 text-green-500"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                    />
-                  </svg>
-                  Vitaminler ve Mineraller
-                </h3>
-                <div class="space-y-3">
-                  <template v-if="selectedFood.vitamins">
-                    <div
-                      v-for="(vitamin, key) in selectedFood.vitamins"
-                      :key="key"
-                      class="flex justify-between items-center py-2 border-b border-gray-100"
-                    >
-                      <span class="text-gray-600">Vitamin {{ key.toUpperCase() }}</span>
-                      <span class="font-medium">{{ vitamin.value }} {{ vitamin.unit }}</span>
-                    </div>
-                  </template>
-                  <template v-if="selectedFood.minerals">
-                    <div
-                      v-for="(mineral, key) in selectedFood.minerals"
-                      :key="key"
-                      class="flex justify-between items-center py-2 border-b border-gray-100"
-                    >
-                      <span class="text-gray-600">{{
-                        key.charAt(0).toUpperCase() + key.slice(1)
-                      }}</span>
-                      <span class="font-medium">{{ mineral.value }} {{ mineral.unit }}</span>
-                    </div>
-                  </template>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </transition>
+    <food-details-modal v-if="selectedFood" :selected-food="selectedFood" @close="selectedFood = null" />
   </div>
 </template>
 
@@ -600,6 +473,7 @@
 import { ref, onMounted } from 'vue';
 import { useToast } from 'vue-toastification';
 import { useAuthStore } from '~/stores/auth';
+import FoodDetailsModal from '~/components/food/foodDetailsModal.vue';
 
 const toast = useToast();
 const authStore = useAuthStore();
@@ -620,7 +494,30 @@ const pagination = ref({
   total: 0,
   pages: 1,
 });
+const filter = ref({
+  protein: '',
+  minCalories: '',
+  maxCalories: '',
+});
 
+const selectedCategory = ref('');
+const proteinCategories = ['low', 'medium', 'high'];
+
+// Filtreleri sıfırlama fonksiyonu
+const resetFilters = () => {
+  filter.value = {
+    protein: '',
+    minCalories: '',
+    maxCalories: '',
+  };
+  selectedCategory.value = '';
+  fetchFoods();
+};
+
+// Filtreleri uygulama fonksiyonu
+const applyFilters = () => {
+  fetchFoods();
+};
 // Besin listesini getir
 const fetchFoods = async () => {
   try {
@@ -630,6 +527,11 @@ const fetchFoods = async () => {
         page: currentPage.value,
         limit: itemsPerPage,
         search: searchQuery.value,
+        category: selectedCategory.value,
+        minProtein: filter.value.protein === 'low' ? 0 : filter.value.protein === 'medium' ? 10 : filter.value.protein === 'high' ? 20 : '',
+        maxProtein: filter.value.protein === 'low' ? 10 : filter.value.protein === 'medium' ? 20 : '',
+        minCalories: filter.value.minCalories,
+        maxCalories: filter.value.maxCalories,
       },
     });
     foods.value = response.foods;
@@ -754,6 +656,7 @@ const changePage = page => {
   fetchFoods();
 };
 
+
 // Detayları göster
 const showDetails = food => {
   selectedFood.value = food;
@@ -765,15 +668,7 @@ onMounted(() => {
 </script>
 
 <style>
-.modal-enter-active,
-.modal-leave-active {
-  transition: opacity 0.3s ease;
-}
 
-.modal-enter-from,
-.modal-leave-to {
-  opacity: 0;
-}
 
 .animate-fade-in {
   animation: fade-in 0.5s ease-in-out;
