@@ -6,11 +6,11 @@ import User from '../models/User';
 const JWT_SECRET = process.env.JWT_SECRET;
 const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
 
-// Token süreleri - Tek bir yerde tanımlanmış sabitler
-const ACCESS_TOKEN_EXPIRY = '1h';  // Access token: 1 saat
-const REFRESH_TOKEN_EXPIRY = '7d';  // Refresh token: 7 gün
-const ACCESS_TOKEN_EXPIRY_MS = 60 * 60 * 1000; // 1 saat (milisaniye)
-const REFRESH_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 gün (milisaniye)
+// Token süreleri - Tek bir yerde tanımlanmış sabitler (milisaniye cinsinden)
+const ACCESS_TOKEN_EXPIRY_MS = 15 * 60 * 1000; // 15 dakika
+const REFRESH_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 gün
+const REMEMBER_ME_OFF_REFRESH_TOKEN_EXPIRY_MS = 60 * 60 * 1000; // 1 saat (hatırla beni kapalıysa)
+const REMEMBER_ME_ON_REFRESH_TOKEN_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000; // 30 gün (hatırla beni açıksa)
 
 // Uygulama başlatıldığında JWT anahtarlarını kontrol et
 if (!JWT_SECRET) {
@@ -25,8 +25,26 @@ if (JWT_SECRET === REFRESH_TOKEN_SECRET) {
   console.warn('SECURITY WARNING: JWT_SECRET and REFRESH_TOKEN_SECRET should not be the same!');
 }
 
+// Refresh token'dan rememberMe değerini çıkaran yardımcı fonksiyon
+export const getRememberMeFromToken = (token) => {
+  try {
+    // Önce token'u doğrula
+    const decoded = jwt.verify(token, REFRESH_TOKEN_SECRET);
+    console.log('Decoded token:', JSON.stringify(decoded, null, 2));
+    
+    // rememberMe değerini kontrol et
+    const rememberMe = decoded.rememberMe === true;
+    console.log('RememberMe value in token:', rememberMe);
+    
+    return rememberMe;
+  } catch (error) {
+    console.error('Token decode error:', error.message);
+    return false;
+  }
+};
+
 // Generate both access and refresh tokens with enhanced security
-export const generateTokens = (userId, event = null) => {
+export const generateTokens = (userId, event = null, rememberMe = false) => {
   let fingerprint = null;
   if (event && event.node && event.node.req) {
     const clientIp = event.node.req.headers['x-forwarded-for'] || 
@@ -42,18 +60,28 @@ export const generateTokens = (userId, event = null) => {
     jti: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
   };
   
-  const accessToken = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
+  const accessToken = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: Math.floor(ACCESS_TOKEN_EXPIRY_MS / 1000) });
   
   const refreshTokenPayload = {
     userId,
-    jti: tokenPayload.jti 
+    jti: tokenPayload.jti,
+    rememberMe, // rememberMe değerini token içinde sakla
+    iat: tokenPayload.iat // Access token ile aynı taze 'iat' değerini kullan
   };
-  const refreshToken = jwt.sign(refreshTokenPayload, REFRESH_TOKEN_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY });
-
+  const refreshToken = jwt.sign(refreshTokenPayload, REFRESH_TOKEN_SECRET, { expiresIn: Math.floor((rememberMe ? REMEMBER_ME_ON_REFRESH_TOKEN_EXPIRY_MS : REMEMBER_ME_OFF_REFRESH_TOKEN_EXPIRY_MS) / 1000) });
+  // Debug için token içeriğini ve rememberMe değerini yazdır
+  const decodedRefreshToken = jwt.decode(refreshToken);
+  console.log('Refresh token payload:', JSON.stringify(decodedRefreshToken, null, 2));
+  
+  console.log('Generated tokens:', {
+    rememberMe,
+    expiresInMs: rememberMe ? REMEMBER_ME_ON_REFRESH_TOKEN_EXPIRY_MS : REMEMBER_ME_OFF_REFRESH_TOKEN_EXPIRY_MS,
+    expiresInSec: Math.floor((rememberMe ? REMEMBER_ME_ON_REFRESH_TOKEN_EXPIRY_MS : REMEMBER_ME_OFF_REFRESH_TOKEN_EXPIRY_MS) / 1000)
+  });
   return { 
     accessToken, 
     refreshToken,
-    expiresIn: ACCESS_TOKEN_EXPIRY_MS,
+    expiresIn: rememberMe ? REMEMBER_ME_ON_REFRESH_TOKEN_EXPIRY_MS : REMEMBER_ME_OFF_REFRESH_TOKEN_EXPIRY_MS,
     fingerprint 
   };
 };
@@ -121,7 +149,7 @@ export const verifyRefreshToken = async (token) => {
 };
 
 // Set both access and refresh token cookies
-export const setAuthCookies = (event, tokens) => {
+export const setAuthCookies = (event, tokens, rememberMe) => {
   // Get client IP and user agent for additional security
   const clientIp = event.node.req.headers['x-forwarded-for'] || 
                    event.node.req.connection.remoteAddress;
@@ -132,16 +160,20 @@ export const setAuthCookies = (event, tokens) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict', // Daha sıkı SameSite politikası
-    maxAge: ACCESS_TOKEN_EXPIRY_MS,
+    maxAge: ACCESS_TOKEN_EXPIRY_MS / 1000, // saniye cinsinden
     path: '/' // Tüm sitede geçerli
   });
   
   // Set refresh token cookie with stricter settings
+  const refreshTokenMaxAgeSeconds = (rememberMe 
+    ? REMEMBER_ME_ON_REFRESH_TOKEN_EXPIRY_MS 
+    : REMEMBER_ME_OFF_REFRESH_TOKEN_EXPIRY_MS) / 1000; // saniye cinsinden
+
   setCookie(event, 'refresh_token', tokens.refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict', // Daha sıkı SameSite politikası
-    maxAge: REFRESH_TOKEN_EXPIRY_MS,
+    maxAge: refreshTokenMaxAgeSeconds,
     path: '/' // Tüm sitede geçerli
   });
   
@@ -240,8 +272,12 @@ export const getServerSession = async (event) => {
       }
       
       console.log('[getServerSession] Refresh token VALID for user ID:', userFromRefreshToken._id, '. Generating new tokens.');
-      const newTokens = generateTokens(userFromRefreshToken._id, event);
-      setAuthCookies(event, newTokens);
+      // Refresh token'dan rememberMe değerini çıkar
+      const rememberMe = getRememberMeFromToken(refreshToken);
+      console.log('[getServerSession] RememberMe value from token:', rememberMe);
+      // rememberMe değerini hem generateTokens hem de setAuthCookies'e ilet
+      const newTokens = generateTokens(userFromRefreshToken._id, event, rememberMe);
+      setAuthCookies(event, newTokens, rememberMe);
       
       console.log('[getServerSession] New tokens generated and cookies set. Returning session for user ID:', userFromRefreshToken._id);
       return {

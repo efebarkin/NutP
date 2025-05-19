@@ -4,6 +4,7 @@ export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null,
     accessToken: null, // Store access token in memory only
+    rememberMe: false, // Beni hatırla seçeneği
     initialized: false,
     loading: false,
     error: null,
@@ -33,6 +34,11 @@ export const useAuthStore = defineStore('auth', {
         this.loading = true;
         
         await this.fetchCsrfToken();
+        
+        // RememberMe değerini localStorage'dan yükle
+        if (import.meta.client) {
+          this.rememberMe = localStorage.getItem('rememberMe') === 'true';
+        }
 
         // Load user from localStorage if we're in the browser
         if (import.meta.client) {
@@ -127,7 +133,8 @@ export const useAuthStore = defineStore('auth', {
 
     startTokenRefreshTimer() {
       // Refresh token every 14 minutes (assuming 15 minute token lifetime)
-      const REFRESH_INTERVAL = 14 * 60 * 1000;
+      // RememberMe açıksa daha uzun aralıklarla kontrol et
+      const REFRESH_INTERVAL = 14 * 60 * 1000; // 14 dakika
 
       // Clear existing timer if any
       if (this.tokenRefreshTimer) {
@@ -141,7 +148,7 @@ export const useAuthStore = defineStore('auth', {
         }
       }, REFRESH_INTERVAL);
       
-      // Start session validation
+      // Start session validation with appropriate interval based on rememberMe
       if (import.meta.client) {
         this.startSessionValidation();
       }
@@ -151,8 +158,11 @@ export const useAuthStore = defineStore('auth', {
     startSessionValidation() {
       if (!import.meta.client) return;
       
-      // Check session validity every 2 days
-      const SESSION_VALIDATION_INTERVAL = 2 * 24 * 60 * 60 * 1000;
+      // Check session validity based on rememberMe
+      // RememberMe açıksa daha uzun aralıklarla kontrol et (24 saat), kapalıysa daha sık kontrol et (30 dakika)
+      const SESSION_VALIDATION_INTERVAL = this.rememberMe 
+        ? 24 * 60 * 60 * 1000  // 24 saat (hatırla beni açıksa - 30 günlük refresh token için)
+        : 30 * 60 * 1000; // 30 dakika (hatırla beni kapalıysa - 1 saatlik refresh token için)
       
       // Clear existing timer if any
       if (this.sessionValidationTimer) {
@@ -229,7 +239,7 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    async login(email, password) {
+    async login(email, password, rememberMe = false) {
       this.loading = true;
       this.error = null;
 
@@ -242,7 +252,7 @@ export const useAuthStore = defineStore('auth', {
         // console.log('Attempting login for:', email);
         const response = await $fetch('/api/auth/login', {
           method: 'POST',
-          body: { email, password },
+          body: { email, password, rememberMe },
           credentials: 'include', // This ensures cookies are sent/received
           headers: {
             'X-CSRF-Token': this.csrfToken
@@ -256,6 +266,17 @@ export const useAuthStore = defineStore('auth', {
           // Store user data without sensitive tokens
           const { accessToken, refreshToken, ...userData } = response.user;
           this.setUser(userData);
+          
+          // RememberMe değerini kaydet
+          this.rememberMe = rememberMe;
+          if (import.meta.client) {
+            if (rememberMe) {
+              localStorage.setItem('rememberMe', 'true');
+            } else {
+              localStorage.removeItem('rememberMe');
+            }
+          }
+          
           this.startTokenRefreshTimer();
           return true;
         }
@@ -441,6 +462,12 @@ export const useAuthStore = defineStore('auth', {
       this.socketToken = null;
       this.error = null;
       this.csrfToken = null;
+      
+      // RememberMe değerini temizle (eğer kullanıcı logout yaptıysa)
+      if (import.meta.client && !this.rememberMe) {
+        localStorage.removeItem('rememberMe');
+      }
+      this.rememberMe = false;
 
       // Clear user from localStorage
       if (import.meta.client) {

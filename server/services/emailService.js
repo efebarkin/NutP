@@ -46,8 +46,9 @@ class EmailService {
             user.verificationCodeExpires = undefined;
             await user.save({ validateModifiedOnly: true });
         
+            const rememberMe = true;
             // Generate tokens and set cookies for auto-login
-            const tokens = generateTokens(user._id, event);
+            const tokens = generateTokens(user._id, event, rememberMe);
             console.log('Tokens generated:', tokens);
             
             // Store refresh token in the database
@@ -56,7 +57,7 @@ class EmailService {
             console.log('Refresh token saved to the database.');
         
             // Set auth cookies with SameSite=None for cross-origin requests
-            setAuthCookies(event, tokens);
+            setAuthCookies(event, tokens, rememberMe);
             
             // Log success for debugging
             console.log('Auth cookies set successfully');

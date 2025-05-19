@@ -35,6 +35,7 @@ const nameSchema = z
 export const loginSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
+  rememberMe: z.boolean().optional().default(false),
 });
 
 // Register validation schema

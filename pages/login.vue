@@ -121,6 +121,7 @@
                     id="remember-me"
                     name="remember-me"
                     type="checkbox"
+                    v-model="rememberMe"
                     class="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded transition-all duration-200"
                   />
                   <label for="remember-me" class="ml-2 block text-sm text-gray-700 flex items-center">
@@ -321,6 +322,7 @@ const { handleSubmit: validateAndSubmit, errors } = useForm({
 const { value: email } = useField('email');
 const { value: password } = useField('password');
 const error = ref('');
+const rememberMe = ref(false);
 
 // Email verification related refs
 const showVerificationModal = ref(false);
@@ -335,7 +337,7 @@ let resendInterval = null;
 const handleSubmit = validateAndSubmit(async (values) => {
   error.value = '';
   try {
-    const success = await authStore.login(values.email, values.password);
+    const success = await authStore.login(values.email, values.password, rememberMe.value);
     if (success) {
       toast.success('Başarıyla giriş yapıldı');
       

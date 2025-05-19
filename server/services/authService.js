@@ -1,4 +1,4 @@
-import { generateTokens, setAuthCookies, getServerSession, verifyRefreshToken, clearAuthCookies, verifyToken } from '../utils/auth';
+import { generateTokens, setAuthCookies, getServerSession, verifyRefreshToken, clearAuthCookies, verifyToken, getRememberMeFromToken } from '../utils/auth';
 import { verifyCsrfToken, csrfCookieOptions, csrfCookieClearOptions, CSRF_COOKIE_NAME } from '~/server/utils/csrf';
 import User from '../models/User';
 import jwt from 'jsonwebtoken';
@@ -21,7 +21,7 @@ class AuthService {
                 });
             }
             //Validation success
-            const { email, password } = result.data;
+            const { email, password, rememberMe } = result.data;
      
             //User check
             const user = await User.findOne({ email }).select('+password');
@@ -72,7 +72,7 @@ class AuthService {
             }
 
             //Generate tokens with fingerprint (IP ve tarayıcı bilgileri)
-            const tokens = generateTokens(user._id, event);
+            const tokens = generateTokens(user._id, event, rememberMe);
 
             // Only store refresh token in the database (not access token)
             // This follows security best practices
@@ -81,7 +81,7 @@ class AuthService {
             });
 
             //Set auth cookies
-            setAuthCookies(event, tokens);
+            setAuthCookies(event, tokens, rememberMe);
                 
             //Return user info
             return {
@@ -253,11 +253,15 @@ class AuthService {
               });
             }
         
-            // Yeni tokenları oluştur
-            const tokens = generateTokens(user._id);
+            // Refresh token'dan rememberMe değerini çıkar
+            const rememberMe = getRememberMeFromToken(refreshToken);
+            console.log('Refreshing token with rememberMe:', rememberMe);
+            
+            // Yeni tokenları oluştur (rememberMe değerini de gönder)
+            const tokens = generateTokens(user._id, event, rememberMe);
             
             // Yeni tokenları cookie'ye kaydet
-            setAuthCookies(event, tokens);
+            setAuthCookies(event, tokens, rememberMe);
         
             return { 
               success: true,
