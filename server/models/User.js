@@ -145,6 +145,18 @@ const userSchema = new mongoose.Schema({
       showOnlineStatus: { type: Boolean, default: true },
       showLastSeen: { type: Boolean, default: true }
     }
+  },
+  isVerified: {
+    type: Boolean,
+    default: false
+  },
+  verificationCode: {
+    type: String,
+    select: false
+  },
+  verificationCodeExpires: {
+    type: Date,
+    select: false
   }
 }, {
   timestamps: true

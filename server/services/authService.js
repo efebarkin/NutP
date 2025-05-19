@@ -4,7 +4,7 @@ import User from '../models/User';
 import jwt from 'jsonwebtoken';
 import { loginSchema, registerSchema} from '../validations/userValidation';
 import { createError, setCookie, getCookie, readBody } from 'h3';
-
+import emailService from '../utils/email';
 
 class AuthService {
 
@@ -38,6 +38,31 @@ class AuthService {
                 throw createError({
                     statusCode: 401,
                     message: 'Geçersiz email veya şifre'
+                });
+            }
+            
+            // Check if user is verified
+            if (!user.isVerified) {
+                // Generate new verification code
+                const verificationCode = emailService.generateVerificationCode();
+                const verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+                
+                // Update user with new verification code
+                user.verificationCode = verificationCode;
+                user.verificationCodeExpires = verificationCodeExpires;
+                await user.save({ validateModifiedOnly: true });
+                
+                // Send verification code via email
+                await emailService.sendVerificationCode(email, verificationCode);
+                
+                throw createError({
+                    statusCode: 403,
+                    message: 'Email adresiniz henüz doğrulanmamış. Doğrulama kodu tekrar gönderildi.',
+                    data: {
+                        requiresVerification: true,
+                        userId: user._id,
+                        email: user.email
+                    }
                 });
             }
 
@@ -148,41 +173,44 @@ class AuthService {
               });
             }
             const { email, password, name, passwordConfirm } = result.data;
+            
+            // Email adresi zaten kullanımda mı kontrol et
+            const existingUser = await User.findOne({ email });
+            if (existingUser) {
+              throw createError({
+                statusCode: 409,
+                message: 'Bu email adresi zaten kullanımda'
+              });
+            }
+        
+            // 6 haneli doğrulama kodu oluştur
+            const verificationCode = emailService.generateVerificationCode();
+            console.log("verificationCode", verificationCode);
+            const verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 dakika geçerli
         
             // Yeni kullanıcı oluştur
             const user = await User.create({
               name,
               email,
               password,
-              passwordConfirm
+              passwordConfirm,
+              verificationCode,
+              verificationCodeExpires,
+              isVerified: false
             });
-        
-            // Kullanıcı için token oluştur
-            const tokens = generateTokens(user._id, event);
+            console.log("user", user);
             
-            // Only store refresh token in the database (not access token)
-            // This follows security best practices
-            await User.findByIdAndUpdate(user._id, {
-              refreshToken: tokens.refreshToken
-            });
+            // Email ile doğrulama kodu gönder
+            await emailService.sendVerificationCode(email, verificationCode);
+            console.log("emailService.sendVerificationCode", emailService.sendVerificationCode);
         
-            // Token'ları cookie'ye kaydet
-            setAuthCookies(event, tokens);
-        
-            // Kullanıcı bilgilerini ve token'ı döndür (otomatik giriş için)
+            // Kullanıcı bilgilerini döndür (henüz login yapmadan)
             return {
               success: true,
-              message: 'Kayıt başarılı',
-              user: {
-                _id: user._id,
-                email: user.email,
-                name: user.name,
-                role: user.role,
-                accessToken: tokens.accessToken,
-                refreshToken: tokens.refreshToken,
-                createdAt: user.createdAt,
-                updatedAt: user.updatedAt
-              }
+              message: 'Kayıt işlemi başlatıldı. Lütfen email adresinize gönderilen doğrulama kodunu girin.',
+              userId: user._id,
+              email: user.email,
+              requiresVerification: true
             };
         
           } catch (error) {

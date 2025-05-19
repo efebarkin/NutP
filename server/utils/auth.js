@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { getCookie, setCookie, deleteCookie, createError, defineEventHandler } from 'h3';
-import { User } from '../models/User';
+import User from '../models/User';
 
 // JWT anahtarları ve token süreleri için sabitler
 const JWT_SECRET = process.env.JWT_SECRET;

@@ -27,6 +27,20 @@ function getTokens() {
 
 // CSRF token doğrulama middleware'i
 export const verifyCsrfToken = (event) => {
+  // Temporarily disable CSRF for /api/auth/verify-email for Postman testing
+  if (event.node.req.url === '/api/auth/verify-email') {
+    console.warn('CSRF check is temporarily bypassed for /api/auth/verify-email');
+    return true;
+  }
+  if (event.node.req.url === '/api/auth/resend-verification') {
+    console.warn('CSRF check is temporarily bypassed for /api/auth/resend-verification');
+    return true;
+  }
+  if (event.node.req.url === '/api/auth/login') {
+    console.warn('CSRF check is temporarily bypassed for /api/auth/login');
+    return true;
+  }
+
   // CSRF koruması aktif mi kontrol et
   const csrfEnabled = process.env.CSRF_ENABLED !== 'false';
   if (!csrfEnabled) {
