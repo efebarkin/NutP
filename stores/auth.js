@@ -261,10 +261,44 @@ export const useAuthStore = defineStore('auth', {
         }
         return false;
       } catch (error) {
-        console.error('Login error:', error.data?.message || error.message);
-        this.error = error.data?.message || error.message;
-        // For now, just setting the error. clearUser() might be too aggressive here.
-        throw error;
+        // This 'error' is what $fetch throws after global interceptor (if any) has processed the response
+        console.error('[AuthStore login catch] Received error:', JSON.parse(JSON.stringify(error)));
+        
+        // Check if this error has verification data attached by setupGlobalErrorHandler
+        if (error.response && error.response.verificationData) {
+          const verificationData = error.response.verificationData;
+          console.log('[AuthStore login catch] Found verificationData attached to error.response:', JSON.parse(JSON.stringify(verificationData)));
+          
+          // Create a structured error object with the verification data
+          const verificationError = {
+            statusCode: 403,
+            message: 'Email adresiniz henüz doğrulanmamış. Doğrulama kodunu girmeniz gerekiyor.',
+            data: {
+              requiresVerification: true,
+              userId: verificationData.userId,
+              email: verificationData.email
+            }
+          };
+          
+          this.error = verificationError.message;
+          console.log('[AuthStore login catch] Throwing verification error for UI:', JSON.parse(JSON.stringify({data: verificationError})));
+          throw { data: verificationError }; // This is the structure login.vue expects
+        }
+        
+        // Nitro/h3 errors ($fetch) usually nest the actual error payload (from createError) in `error.data`
+        const errorPayloadFromFetch = error.data; 
+        console.log('[AuthStore login catch] Extracted errorPayloadFromFetch (error.data):', errorPayloadFromFetch ? JSON.parse(JSON.stringify(errorPayloadFromFetch)) : 'undefined');
+
+        // Fallback check for verification error in error.data structure
+        if (errorPayloadFromFetch?.statusCode === 403 && errorPayloadFromFetch?.data?.requiresVerification === true) {
+          console.log('[AuthStore login catch] CORRECTLY IDENTIFIED verification error in error.data. Re-throwing for UI with structure { data: errorPayloadFromFetch }:', JSON.parse(JSON.stringify({data: errorPayloadFromFetch})));
+          this.error = errorPayloadFromFetch.message || 'Email adresiniz henüz doğrulanmamış.';
+          throw { data: errorPayloadFromFetch }; // This is the structure login.vue expects in err.data
+        } else {
+          console.log('[AuthStore login catch] Did NOT identify as verification error. Handling as other error. errorPayloadFromFetch:', errorPayloadFromFetch ? JSON.parse(JSON.stringify(errorPayloadFromFetch)) : 'undefined', 'Full error:', JSON.parse(JSON.stringify(error)));
+          this.error = errorPayloadFromFetch?.message || error.message || 'Giriş yapılırken bir hata oluştu';
+          throw error; // Re-throw the original error (or a generic one if no message)
+        }
       } finally {
         this.loading = false;
       }
@@ -559,9 +593,49 @@ export const useAuthStore = defineStore('auth', {
               // Return the original response for these paths to be handled by their specific catch blocks.
               return response;
             }
-          } else if(response.status === 403){
+          } else if (response.status === 403) {
+            const requestUrl = typeof urlOrRequest === 'string' ? urlOrRequest : urlOrRequest.url;
+            console.warn(`[AuthStore] Global 403 detected on ${requestUrl}.`);
+
+            // Special handling for login endpoint 403s that might be verification errors
+            if (requestUrl.includes('/api/auth/login')) {
+              try {
+                // Check for custom verification headers
+                const requiresVerification = response.headers.get('X-Requires-Verification');
+                const userId = response.headers.get('X-Verification-User-Id');
+                const email = response.headers.get('X-Verification-Email');
+                
+                console.warn('[AuthStore Global 403 Handler] Checking headers for verification:', {
+                  'X-Requires-Verification': requiresVerification,
+                  'X-Verification-User-Id': userId,
+                  'X-Verification-Email': email
+                });
+                
+                if (requiresVerification === 'true' && userId && email) {
+                  console.warn('[AuthStore] Global 403 from /api/auth/login IS a "requiresVerification" error based on headers. LETTING IT PROPAGATE to login action catch block.');
+                  
+                  // Attach verification data to the response object for the login action to use
+                  response.verificationData = {
+                    requiresVerification: true,
+                    userId,
+                    email
+                  };
+                  
+                  return response; // Let the login action's catch block handle it
+                } else {
+                  console.warn('[AuthStore] Global 403 from /api/auth/login is NOT a "requiresVerification" error. Treating as general forbidden.');
+                }
+              } catch (e) {
+                console.error('[AuthStore] Error checking verification headers:', e);
+                console.warn('[AuthStore] Global 403 from /api/auth/login - failed to check headers. Treating as general forbidden.');
+              }
+            }
+            
+            // For other 403s, or if the /api/auth/login 403 inspection decided it's general forbidden
+            console.warn('[AuthStore] Global 403 (or unhandled login 403) is being treated as a general "Forbidden" error. Setting reason and logging out.');
             this.globalLogoutReason = { message: 'You do not have permission to access this resource.' };
-            await this.logout();
+            await this.logout(); // This initiates logout
+            return response; // Still return the original response, logout process is async
           }
           return response;
         } catch (error) { // Network errors or other fetch-related errors

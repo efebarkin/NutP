@@ -237,81 +237,9 @@
             </div>
           </div>
 
-          <!-- Doğrulama kodu alanı (sadece doğrulama modu aktifken gösterilir) -->
-          <div v-if="verificationMode" class="animate-fade-in-up space-y-4">
-            <div class="text-center space-y-2">
-              <div class="flex justify-center mb-4">
-                <div class="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
-                </div>
-              </div>
-              <h3 class="text-lg font-medium text-gray-900">Email Doğrulama</h3>
-              <p class="text-sm text-gray-600">{{ verificationEmail }} adresine 6 haneli bir doğrulama kodu gönderdik.</p>
-            </div>
-            
-            <!-- Doğrulama kodu girişi -->
-            <div class="mt-4">
-              <label for="verificationCode" class="block text-sm font-medium text-gray-700 mb-1">Doğrulama Kodu</label>
-              <div class="flex space-x-2 justify-center">
-                <input
-                  v-model="verificationCode"
-                  type="text"
-                  maxlength="6"
-                  placeholder="123456"
-                  class="w-full py-3 px-4 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 text-center text-lg tracking-widest"
-                  :class="verificationError ? 'border-red-300 animate-shake' : ''"
-                />
-              </div>
-              <p v-if="verificationError" class="mt-2 text-sm text-red-600">{{ verificationError }}</p>
-              <p class="mt-2 text-xs text-gray-500 text-center">Doğrulama kodu 10 dakika boyunca geçerlidir.</p>
-            </div>
-            
-            <!-- Doğrulama butonu -->
-            <div class="flex space-x-3">
-              <button
-                type="button"
-                @click="verifyEmail"
-                class="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all duration-200 relative overflow-hidden group"
-                :disabled="verificationCode.length !== 6 || verifyingEmail"
-                :class="{ 'opacity-70 cursor-not-allowed': verificationCode.length !== 6 || verifyingEmail }"
-              >
-                <span class="absolute w-0 h-0 transition-all duration-300 ease-out bg-white rounded-full group-hover:w-32 group-hover:h-32 opacity-10"></span>
-                <span v-if="verifyingEmail" class="flex items-center">
-                  <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Doğrulanıyor...
-                </span>
-                <span v-else class="relative">Doğrula</span>
-              </button>
-            </div>
-            
-            <!-- Yeni kod gönder -->
-            <div class="text-center">
-              <button 
-                type="button" 
-                @click="resendVerificationCode"
-                class="text-sm text-green-600 hover:text-green-500 focus:outline-none transition-colors duration-200"
-                :disabled="resendCooldown > 0 || resendingCode"
-              >
-                <span v-if="resendCooldown > 0">Yeni kod gönderme ({{ resendCooldown }}s)</span>
-                <span v-else-if="resendingCode" class="flex items-center justify-center">
-                  <svg class="animate-spin -ml-1 mr-2 h-3 w-3 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Kod gönderiliyor...
-                </span>
-                <span v-else>Yeni kod gönder</span>
-              </button>
-            </div>
-          </div>
 
-          <!-- Kayıt ol butonu (sadece doğrulama modu aktif değilken gösterilir) -->
-          <div v-if="!verificationMode" class="animate-fade-in-up animation-delay-900">
+          <!-- Kayıt ol butonu -->
+          <div class="animate-fade-in-up animation-delay-900">
             <button
               type="submit"
               class="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all duration-200 relative overflow-hidden group"
@@ -357,11 +285,67 @@
         </form>
       </div>
     </div>
+    
+    <!-- Email Verification Modal -->
+    <div v-if="showVerificationModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-fade-in">
+      <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4 animate-scale-in">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-lg font-medium text-gray-900">Email Doğrulama</h3>
+          <button @click="showVerificationModal = false" class="text-gray-400 hover:text-gray-500">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        
+        <div class="mb-4">
+          <p class="text-sm text-gray-600 mb-4">Email adresinize gönderilen 6 haneli doğrulama kodunu giriniz.</p>
+          
+          <div class="flex flex-col space-y-2">
+            <label for="verification-code" class="text-sm font-medium text-gray-700">Doğrulama Kodu</label>
+            <input 
+              id="verification-code" 
+              v-model="verificationCode" 
+              type="text" 
+              maxlength="6" 
+              placeholder="6 haneli kod" 
+              class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            />
+          </div>
+          
+          <div v-if="verificationError" class="mt-2 text-sm text-red-600">
+            {{ verificationError }}
+          </div>
+        </div>
+        
+        <div class="flex justify-between items-center">
+          <button 
+            @click="resendVerificationCode" 
+            class="text-sm text-green-600 hover:text-green-500 focus:outline-none"
+            :disabled="resendCooldown > 0"
+          >
+            {{ resendCooldown > 0 ? `Yeniden gönder (${resendCooldown}s)` : 'Kodu yeniden gönder' }}
+          </button>
+          
+          <button 
+            @click="verifyEmail" 
+            class="inline-flex justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+            :disabled="verifyingEmail || verificationCode.length !== 6"
+          >
+            <svg v-if="verifyingEmail" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Doğrula
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onUnmounted } from 'vue';
 import { navigateTo } from '#app';
 import { useAuthStore } from '~/stores/auth';
 import { useToast } from 'vue-toastification';
@@ -435,15 +419,24 @@ const isFormValid = computed(() => {
 });
 
 // Email doğrulama modu state'leri
-const verificationMode = ref(false);
-const verificationCode = ref('');
+const showVerificationModal = ref(false);
 const verificationUserId = ref('');
 const verificationEmail = ref('');
+const verificationCode = ref('');
 const verificationError = ref('');
 const verifyingEmail = ref(false);
 const resendingCode = ref(false);
 const resendCooldown = ref(0);
+let resendInterval = null; // For managing the cooldown timer
 const submitting = ref(false);
+
+// Cleanup on component unmount
+onUnmounted(() => {
+  // Clear any timers or resources
+  if (resendInterval) {
+    clearInterval(resendInterval);
+  }
+});
 
 // Form gönderme işlemi
 const handleSubmit = validateAndSubmit(async (values) => {
@@ -453,10 +446,12 @@ const handleSubmit = validateAndSubmit(async (values) => {
     const result = await authStore.register(values);
     if (result && result.success) {
       if (result.requiresVerification) {
-        // Email doğrulama modu aktif
-        verificationMode.value = true;
+        // Show email verification modal
         verificationUserId.value = result.userId;
         verificationEmail.value = result.email;
+        verificationCode.value = '';
+        verificationError.value = '';
+        showVerificationModal.value = true;
         toast.info('Lütfen email adresinize gönderilen doğrulama kodunu girin');
       } else {
         // Doğrulama gerekmiyorsa direkt giriş yap
@@ -510,13 +505,21 @@ const verifyEmail = async () => {
 
     console.log('[VERIFY_EMAIL] STEP 1: About to call $fetch for /api/auth/verify-email');
     
+    // Ensure we have a CSRF token
+    if (!authStore.csrfToken) {
+      await authStore.fetchCsrfToken();
+    }
+    
     const response = await $fetch('/api/auth/verify-email', {
       method: 'POST',
       body: {
         userId: verificationUserId.value,
         code: verificationCode.value
       },
-      credentials: 'include' // Ensure cookies are sent and received
+      credentials: 'include', // Ensure cookies are sent and received
+      headers: {
+        'X-CSRF-Token': authStore.csrfToken
+      }
     });
     console.log('[VERIFY_EMAIL] STEP 2: $fetch call completed. Response received:', response);
     
@@ -568,10 +571,20 @@ const resendVerificationCode = async () => {
     resendingCode.value = true;
     verificationError.value = '';
     
+    // Ensure we have a CSRF token
+    if (!authStore.csrfToken) {
+      await authStore.fetchCsrfToken();
+    }
+    
     const response = await $fetch('/api/auth/resend-verification', {
       method: 'POST',
       body: {
+        userId: verificationUserId.value,
         email: verificationEmail.value
+      },
+      credentials: 'include',
+      headers: {
+        'X-CSRF-Token': authStore.csrfToken
       }
     });
     
@@ -581,10 +594,11 @@ const resendVerificationCode = async () => {
       
       // Yeniden gönderme için 60 saniyelik cooldown başlat
       resendCooldown.value = 60;
-      const timer = setInterval(() => {
+      if (resendInterval) clearInterval(resendInterval);
+      resendInterval = setInterval(() => {
         resendCooldown.value--;
         if (resendCooldown.value <= 0) {
-          clearInterval(timer);
+          clearInterval(resendInterval);
         }
       }, 1000);
     }

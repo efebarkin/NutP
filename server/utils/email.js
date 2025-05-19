@@ -8,8 +8,8 @@ class EmailService {
       port: 587,
       secure: false,
       auth: {
-        user: process.env.EMAIL_USER || '',
-        pass: process.env.EMAIL_PASSWORD || '',
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD,
       },
     });
   }
@@ -22,7 +22,7 @@ class EmailService {
    */
   async sendVerificationCode(to, code) {
     const mailOptions = {
-      from: '"NutP" <nutp@hmail.com>',
+      from: '"NutP" <nutp@gmail.com>',
       to,
       subject: 'Email Doğrulama Kodu',
       html: `

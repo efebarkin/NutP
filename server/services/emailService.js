@@ -45,7 +45,6 @@ class EmailService {
             user.verificationCode = undefined;
             user.verificationCodeExpires = undefined;
             await user.save({ validateModifiedOnly: true });
-            console.log('User has been marked as verified and saved to the database.');
         
             // Generate tokens and set cookies for auto-login
             const tokens = generateTokens(user._id, event);

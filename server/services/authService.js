@@ -53,7 +53,12 @@ class AuthService {
                 await user.save({ validateModifiedOnly: true });
                 
                 // Send verification code via email
-                await emailService.sendVerificationCode(email, verificationCode);
+                await emailService.sendVerificationCode(user.email, verificationCode);
+                
+                // Set custom headers on the event context
+                event.node.res.setHeader('X-Requires-Verification', 'true');
+                event.node.res.setHeader('X-Verification-User-Id', user._id);
+                event.node.res.setHeader('X-Verification-Email', user.email);
                 
                 throw createError({
                     statusCode: 403,
@@ -173,19 +178,9 @@ class AuthService {
               });
             }
             const { email, password, name, passwordConfirm } = result.data;
-            
-            // Email adresi zaten kullanımda mı kontrol et
-            const existingUser = await User.findOne({ email });
-            if (existingUser) {
-              throw createError({
-                statusCode: 409,
-                message: 'Bu email adresi zaten kullanımda'
-              });
-            }
         
             // 6 haneli doğrulama kodu oluştur
             const verificationCode = emailService.generateVerificationCode();
-            console.log("verificationCode", verificationCode);
             const verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 dakika geçerli
         
             // Yeni kullanıcı oluştur
@@ -198,11 +193,9 @@ class AuthService {
               verificationCodeExpires,
               isVerified: false
             });
-            console.log("user", user);
             
             // Email ile doğrulama kodu gönder
             await emailService.sendVerificationCode(email, verificationCode);
-            console.log("emailService.sendVerificationCode", emailService.sendVerificationCode);
         
             // Kullanıcı bilgilerini döndür (henüz login yapmadan)
             return {
@@ -350,19 +343,20 @@ class AuthService {
             // Mevcut Token'ı Çerezden Oku
             let token = getCookie(event, CSRF_COOKIE_NAME);
         
-            // Token yoksa veya her istekte yenilemek istiyorsak yeni token oluştur
-            // Her istekte yenilemek daha güvenlidir
+            // Token yoksa yeni token oluştur
             if (!token) {
               token = generateCsrfToken();
-              setCookie(event, CSRF_COOKIE_NAME, token, csrfCookieOptions);
             }
+        
+            // Token'ı cookie'ye her zaman set et/yenile (maxAge gibi seçeneklerin güncel olmasını sağlar)
+            setCookie(event, CSRF_COOKIE_NAME, token, csrfCookieOptions);
         
             // Token'ı İstemciye Gönder
             // İstemci bu token'ı alıp sonraki state değiştiren (POST, PUT, DELETE)
             // isteklerinde X-CSRF-Token başlığı ile geri göndermelidir
             return {
               csrfToken: token,
-              expiresIn: csrfCookieOptions.maxAge
+              expiresIn: csrfCookieOptions.maxAge // İstemciye cookie'nin ne zaman süresinin dolacağını bildirebiliriz
             };
         
           } catch (error) {

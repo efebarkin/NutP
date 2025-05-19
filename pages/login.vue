@@ -227,10 +227,66 @@
         </div>
       </div>
     </div>
+
+    <!-- Email Verification Modal -->
+    <div v-if="showVerificationModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-fade-in">
+      <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4 animate-scale-in">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-lg font-medium text-gray-900">Email Doğrulama</h3>
+          <button @click="showVerificationModal = false" class="text-gray-400 hover:text-gray-500">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        
+        <div class="mb-4">
+          <p class="text-sm text-gray-600 mb-4">Email adresinize gönderilen 6 haneli doğrulama kodunu giriniz.</p>
+          
+          <div class="flex flex-col space-y-2">
+            <label for="verification-code" class="text-sm font-medium text-gray-700">Doğrulama Kodu</label>
+            <input 
+              id="verification-code" 
+              v-model="verificationCode" 
+              type="text" 
+              maxlength="6" 
+              placeholder="6 haneli kod" 
+              class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            />
+          </div>
+          
+          <div v-if="verificationError" class="mt-2 text-sm text-red-600">
+            {{ verificationError }}
+          </div>
+        </div>
+        
+        <div class="flex justify-between items-center">
+          <button 
+            @click="resendVerificationCode" 
+            class="text-sm text-green-600 hover:text-green-500 focus:outline-none"
+            :disabled="resendCooldown > 0"
+          >
+            {{ resendCooldown > 0 ? `Yeniden gönder (${resendCooldown}s)` : 'Kodu yeniden gönder' }}
+          </button>
+          
+          <button 
+            @click="verifyEmail" 
+            class="inline-flex justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+            :disabled="verifyingEmail || verificationCode.length !== 6"
+          >
+            <svg v-if="verifyingEmail" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Doğrula
+          </button>
+        </div>
+      </div>
+    </div>
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, onUnmounted } from 'vue';
 import { useAuthStore } from '~/stores/auth';
 import { useToast } from 'vue-toastification';
 import { navigateTo } from '#app';
@@ -265,6 +321,16 @@ const { handleSubmit: validateAndSubmit, errors } = useForm({
 const { value: email } = useField('email');
 const { value: password } = useField('password');
 const error = ref('');
+
+// Email verification related refs
+const showVerificationModal = ref(false);
+const verificationUserId = ref('');
+const verificationEmail = ref('');
+const verificationCode = ref('');
+const verificationError = ref('');
+const verifyingEmail = ref(false);
+const resendCooldown = ref(0);
+let resendInterval = null;
 
 const handleSubmit = validateAndSubmit(async (values) => {
   error.value = '';
@@ -317,17 +383,136 @@ const handleSubmit = validateAndSubmit(async (values) => {
       error.value = authStore.error || 'Giriş yapılırken bir hata oluştu';
     }
   } catch (err) {
-    // Backend'den dönen hata mesajını göster
-    if (err?.data && err.data.data) {
-      Object.keys(err.data.data).forEach(key => {
-        errors[key] = err.data.data[key]?._errors?.[0] || '';
-      });
-    } else if (err?.data?.message) {
-      error.value = err.data.message;
-    } else {
-      error.value = err.message || 'Giriş yapılırken bir hata oluştu';
-    }
     console.error('Login failed:', err);
+    
+    // err.data is now the direct payload from the backend, e.g., { statusCode, message, requiresVerification, userId, email }
+    // This structure is set by the authStore's login catch block: throw { data: errorPayloadFromFetch };
+    // err.data is the payload from the authStore, which should be:
+    // { statusCode, message, data: { requiresVerification, userId, email } }
+    const errorPayload = err.data; // This is error.data from $fetch, passed through by the store.
+    console.log('[Login.vue] handleSubmit caught error. Full error object (err):', JSON.parse(JSON.stringify(err)));
+    console.log('[Login.vue] Extracted errorPayload (err.data - should contain a nested .data object):', errorPayload ? JSON.parse(JSON.stringify(errorPayload)) : 'undefined');
+
+    // Check if this is an unverified email error, looking at the nested 'data' property
+    if (errorPayload?.statusCode === 403 && errorPayload?.data?.requiresVerification === true) {
+      console.log('[Login.vue] Verification condition MET. Displaying verification modal. errorPayload.data:', JSON.parse(JSON.stringify(errorPayload.data)));
+      // Show verification modal
+      verificationUserId.value = errorPayload.data.userId;
+      verificationEmail.value = errorPayload.data.email;
+      verificationCode.value = '';
+      verificationError.value = '';
+      showVerificationModal.value = true;
+      
+      // Set a friendly message
+      error.value = 'Email adresiniz henüz doğrulanmamış. Doğrulama kodunu girmeniz gerekiyor.';
+    } else {
+      console.log('[Login.vue] Verification condition NOT MET. Handling as other error. errorPayload:', errorPayload ? JSON.parse(JSON.stringify(errorPayload)) : 'undefined');
+      // Handle other errors (e.g., actual 401, validation errors from backend)
+      // For VeeValidate field errors, they might be nested if backend sends structured validation errors
+      // This part might need adjustment based on how *other* types of errors are structured by your backend.
+      // For now, assuming general error messages are top-level in errorPayload or directly on err.
+      if (errorPayload?.data) { // If there's a nested 'data' object, it might contain specific field errors (e.g. Zod)
+        Object.keys(errorPayload.data).forEach(key => {
+          if (errors.hasOwnProperty(key)) { // Ensure 'errors' from useForm has this key
+            // This assumes Zod-like error structure: { field: { _errors: ['message'] } }
+            errors[key] = errorPayload.data[key]?._errors?.[0] || '';
+          }
+        });
+      }
+      // Set general error message for the main form error display
+      error.value = errorPayload?.message || (err && err.message) /* fallback for unexpected structures */ || 'Giriş yapılırken bir hata oluştu.';
+      console.log('[Login.vue] General error.value set to:', error.value);
+    }
+  }
+});
+
+// Email verification functions
+const verifyEmail = async () => {
+  if (verificationCode.value.length !== 6) return;
+  
+  try {
+    verifyingEmail.value = true;
+    verificationError.value = '';
+    
+    // Ensure we have a CSRF token
+    const authStore = useAuthStore();
+    if (!authStore.csrfToken) {
+      await authStore.fetchCsrfToken();
+    }
+    
+    // Call the API to verify email
+    const response = await $fetch('/api/auth/verify-email', {
+      method: 'POST',
+      body: {
+        userId: verificationUserId.value,
+        code: verificationCode.value
+      },
+      credentials: 'include',
+      headers: {
+        'X-CSRF-Token': authStore.csrfToken
+      }
+    });
+    
+    // If successful
+    toast.success('Email adresiniz başarıyla doğrulandı!');
+    showVerificationModal.value = false;
+    
+    // Try to login again automatically
+    await authStore.login(email.value, password.value);
+    navigateTo('/');
+    
+  } catch (error) {
+    console.error('Email verification error:', error);
+    verificationError.value = error.data?.message || 'Doğrulama kodu geçersiz. Lütfen tekrar deneyin.';
+  } finally {
+    verifyingEmail.value = false;
+  }
+};
+
+const resendVerificationCode = async () => {
+  if (resendCooldown.value > 0) return;
+  
+  try {
+    // Ensure we have a CSRF token
+    const authStore = useAuthStore();
+    if (!authStore.csrfToken) {
+      await authStore.fetchCsrfToken();
+    }
+    
+    // Call the API to resend verification code
+    await $fetch('/api/auth/resend-verification', {
+      method: 'POST',
+      body: {
+        userId: verificationUserId.value,
+        email: verificationEmail.value
+      },
+      credentials: 'include',
+      headers: {
+        'X-CSRF-Token': authStore.csrfToken
+      }
+    });
+    
+    // Start cooldown
+    resendCooldown.value = 60;
+    resendInterval = setInterval(() => {
+      if (resendCooldown.value > 0) {
+        resendCooldown.value--;
+      } else {
+        clearInterval(resendInterval);
+      }
+    }, 1000);
+    
+    toast.info('Yeni doğrulama kodu email adresinize gönderildi.');
+  } catch (error) {
+    console.error('Resend verification error:', error);
+    toast.error(error.data?.message || 'Doğrulama kodu gönderilirken bir hata oluştu.');
+  }
+};
+
+// Clear interval when component is unmounted
+onUnmounted(() => {
+  if (resendInterval) {
+    clearInterval(resendInterval);
   }
 });
 </script>
