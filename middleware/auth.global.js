@@ -3,7 +3,6 @@ import { defineNuxtRouteMiddleware, navigateTo } from '#app';
 
 // Sadece giriş yapmış kullanıcılara açık sayfalar
 const protectedPages = [
-  '/profile',
   '/meals/create',
   '/meals/edit',
   '/dashboard',

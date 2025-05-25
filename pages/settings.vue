@@ -48,6 +48,7 @@
 import { computed, onMounted } from 'vue';
 import { useAuthStore } from '~/stores/auth';
 import PasswordChangeForm from '~/components/user/PasswordChangeForm.vue';
+import role from '~/middleware/role';
 
 // Auth store
 const authStore = useAuthStore();
@@ -82,6 +83,11 @@ const formatDate = (dateString) => {
     day: 'numeric'
   });
 };
+
+definePageMeta({
+  middleware: role(['admin', 'user']),
+  layout: 'settings'
+});
 
 // Sayfa yüklenirken oturum durumunu kontrol et
 onMounted(async () => {
