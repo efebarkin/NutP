@@ -3,7 +3,7 @@ import { z } from 'zod';
 // Besin değerleri için value-unit şeması
 const nutrientValueSchema = z.object({
   value: z.number().min(0, 'Değer negatif olamaz'),
-  unit: z.string()
+  unit: z.string(),
 });
 
 // Besin değerleri şeması (Food modeli ile birebir uyumlu)
@@ -11,7 +11,7 @@ const nutrientsSchema = z.object({
   energy: nutrientValueSchema.optional(),
   protein: nutrientValueSchema.optional(),
   fat: nutrientValueSchema.optional(),
-  carbohydrates: nutrientValueSchema.optional(), // carbohydrate değil, carbohydrates
+  carbohydrate: nutrientValueSchema.optional(), // carbohydrate (singular) to match database
   fiber: nutrientValueSchema.optional(),
   sugar: nutrientValueSchema.optional(),
   cholesterol: nutrientValueSchema.optional(),
@@ -43,14 +43,14 @@ const nutrientsSchema = z.object({
   vitaminB12: nutrientValueSchema.optional(),
   caffeine: nutrientValueSchema.optional(),
   alcohol: nutrientValueSchema.optional(),
-  water: nutrientValueSchema.optional()
+  water: nutrientValueSchema.optional(),
 });
 
 // Porsiyon şeması
 const portionSchema = z.object({
   name: z.string().min(1, 'Porsiyon adı zorunludur'),
   weight: z.number().min(0, 'Ağırlık negatif olamaz'),
-  isDefault: z.boolean().default(false)
+  isDefault: z.boolean().default(false),
 });
 
 // Metadata şeması
@@ -58,29 +58,32 @@ const metadataSchema = z.object({
   fdcId: z.string().optional(),
   isVerified: z.boolean().default(false),
   addedBy: z.string(),
-  originalCategory: z.string().optional()
+  originalCategory: z.string().optional(),
 });
 
 // Temel besin bilgileri şeması
 const foodBaseSchema = z.object({
   name: z.object({
     tr: z.string().min(2, 'Türkçe isim en az 2 karakter olmalıdır'),
-    en: z.string().min(2, 'İngilizce isim en az 2 karakter olmalıdır')
+    en: z.string().min(2, 'İngilizce isim en az 2 karakter olmalıdır'),
   }),
   photoUrl: z.string().optional(),
-  category: z.enum(['fruit', 'vegetable', 'meat', 'dairy', 'grain', 'beverage', 'other'], {
-    errorMap: () => ({ message: 'Geçerli bir kategori seçiniz' })
-  }),
+  category: z.enum(
+    ['fruit', 'vegetable', 'meat', 'dairy', 'grain', 'beverage', 'other'],
+    {
+      errorMap: () => ({ message: 'Geçerli bir kategori seçiniz' }),
+    },
+  ),
   source: z.string(), // Zorunlu alan
   nutrients: nutrientsSchema,
   portions: z.array(portionSchema).optional(),
-  metadata: metadataSchema.optional()
+  metadata: metadataSchema.optional(),
 });
 
-
-
 // ID validasyonu
-export const foodIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Geçersiz besin ID formatı');
+export const foodIdSchema = z
+  .string()
+  .regex(/^[0-9a-fA-F]{24}$/, 'Geçersiz besin ID formatı');
 
 // Besin oluşturma şeması
 export const createFoodSchema = foodBaseSchema;

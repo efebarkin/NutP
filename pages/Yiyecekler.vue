@@ -580,7 +580,7 @@
               </div>
 
               <!-- Food Info -->
-              <div class="flex-1 min-w-0">
+              <div class="flex-1 min-w-0 pr-12">
                 <!-- Wrapper for Name and Category, vertically stacked -->
                 <div class="mb-2">
                   <!-- Added mb-2 for spacing below category -->
@@ -648,13 +648,9 @@
                   class="text-sm font-bold text-yellow-800"
                 >
                   {{
-                    food.nutrients.carbohydrate?.value ||
-                    food.nutrients.carbohydrates?.value ||
-                    0
+                    food.nutrients.carbohydrate?.value || 0
                   }}{{
-                    food.nutrients.carbohydrate?.unit ||
-                    food.nutrients.carbohydrates?.unit ||
-                    'G'
+                    food.nutrients.carbohydrate?.unit || 'G'
                   }}
                 </div>
               </div>

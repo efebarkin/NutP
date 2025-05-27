@@ -8,6 +8,18 @@ import {
 } from '../../utils/redis';
 import userService from '../../services/userService';
 
+// Helper fonksiyon: Kullanıcının tüm socket bağlantılarına mesaj gönder
+const emitToUser = (io, connectedUsers, userId, event, data) => {
+  const userSockets = connectedUsers.get(userId);
+  if (userSockets && userSockets.size > 0) {
+    userSockets.forEach((socketId) => {
+      io.to(socketId).emit(event, data);
+    });
+    return true;
+  }
+  return false;
+};
+
 export function getUserHandlers(io, socket, connectedUsers) {
   const userId = socket.userId;
 
@@ -40,12 +52,16 @@ export function getUserHandlers(io, socket, connectedUsers) {
         callback({ success: true, data: friend });
 
         // Diğer kullanıcıya bildirim gönder
-        const friendSocketId = connectedUsers.get(friendId);
-        if (friendSocketId) {
-          // Kullanıcı bilgilerini getir
-          const user = await userService.getUserById(userId);
-
-          io.to(friendSocketId).emit('friend_added', user);
+        if (
+          emitToUser(
+            io,
+            connectedUsers,
+            friendId,
+            'friend_added',
+            await userService.getUserById(userId),
+          )
+        ) {
+          console.log(`Friend request notification sent to user ${friendId}`);
         }
       } catch (error) {
         console.error('Error adding friend:', error);
@@ -67,9 +83,10 @@ export function getUserHandlers(io, socket, connectedUsers) {
         callback({ success: true });
 
         // Diğer kullanıcıya bildirim gönder
-        const friendSocketId = connectedUsers.get(friendId);
-        if (friendSocketId) {
-          io.to(friendSocketId).emit('friend_removed', { userId });
+        if (
+          emitToUser(io, connectedUsers, friendId, 'friend_removed', { userId })
+        ) {
+          console.log(`Friend removal notification sent to user ${friendId}`);
         }
       } catch (error) {
         console.error('Error removing friend:', error);
@@ -128,13 +145,10 @@ export function getUserHandlers(io, socket, connectedUsers) {
         ) {
           userWithFriends.friends.forEach((friend) => {
             const friendId = friend._id.toString();
-            const friendSocketId = connectedUsers.get(friendId);
-            if (friendSocketId) {
-              io.to(friendSocketId).emit('user_status_change', {
-                userId,
-                status,
-              });
-            }
+            emitToUser(io, connectedUsers, friendId, 'user_status_change', {
+              userId,
+              status,
+            });
           });
         }
       } catch (error) {
@@ -180,13 +194,10 @@ export function getUserHandlers(io, socket, connectedUsers) {
       ) {
         userWithFriends.friends.forEach((friend) => {
           const friendId = friend._id.toString();
-          const friendSocketId = connectedUsers.get(friendId);
-          if (friendSocketId) {
-            io.to(friendSocketId).emit('user_status_change', {
-              userId,
-              status: 'offline',
-            });
-          }
+          emitToUser(io, connectedUsers, friendId, 'user_status_change', {
+            userId,
+            status: 'offline',
+          });
         });
       }
     },

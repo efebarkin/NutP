@@ -22,42 +22,48 @@ class FavoritesService {
         // Kullanıcıyı bul
         { $match: { _id: new mongoose.Types.ObjectId(userId) } },
         // Favori besinleri al
-        { $lookup: {
-          from: 'foods', // Food koleksiyonu
-          localField: 'favoriteFoods',
-          foreignField: '_id',
-          as: 'favoriteFoodsData'
-        }},
-        // Kategorileri al
-        { $lookup: {
-          from: 'categories', // Category koleksiyonu
-          localField: 'favoriteFoodsData.category',
-          foreignField: '_id',
-          as: 'categoriesData'
-        }},
-        // Sadece ihtiyacımız olan alanları seç
-        { $project: {
-          favoriteFoodsData: {
-            _id: 1,
-            name: 1,
-            nutrients: 1,
-            category: 1,
-            portionSize: 1,
-            servingSize: 1,
-            image: 1
+        {
+          $lookup: {
+            from: 'foods', // Food koleksiyonu
+            localField: 'favoriteFoods',
+            foreignField: '_id',
+            as: 'favoriteFoodsData',
           },
-          categoriesData: {
-            _id: 1,
-            name: 1
-          }
-        }}
+        },
+        // Kategorileri al
+        {
+          $lookup: {
+            from: 'categories', // Category koleksiyonu
+            localField: 'favoriteFoodsData.category',
+            foreignField: '_id',
+            as: 'categoriesData',
+          },
+        },
+        // Sadece ihtiyacımız olan alanları seç
+        {
+          $project: {
+            favoriteFoodsData: {
+              _id: 1,
+              name: 1,
+              nutrients: 1,
+              category: 1,
+              portionSize: 1,
+              servingSize: 1,
+              image: 1,
+            },
+            categoriesData: {
+              _id: 1,
+              name: 1,
+            },
+          },
+        },
       ]);
 
       // Kullanıcı bulunamadı kontrolü
       if (!result || result.length === 0) {
         throw createError({
           statusCode: 404,
-          message: 'Kullanıcı bulunamadı'
+          message: 'Kullanıcı bulunamadı',
         });
       }
 
@@ -66,12 +72,14 @@ class FavoritesService {
       const categories = user.categoriesData || [];
 
       // Transform the data to ensure all required fields exist
-      return foods.map(food => {
+      return foods.map((food) => {
         // Besinin kategorisini bul
-        const foodCategory = categories.find(cat => 
-          cat._id.toString() === (food.category ? food.category.toString() : null)
+        const foodCategory = categories.find(
+          (cat) =>
+            cat._id.toString() ===
+            (food.category ? food.category.toString() : null),
         );
-        
+
         return {
           id: food._id,
           name: food.name || { tr: 'İsimsiz', en: 'Unnamed' },
@@ -79,17 +87,22 @@ class FavoritesService {
             energy: { value: 0, unit: 'KCAL' },
             protein: { value: 0, unit: 'G' },
             fat: { value: 0, unit: 'G' },
-            carbohydrates: { value: 0, unit: 'G' },
+            carbohydrate: { value: 0, unit: 'G' },
             fiber: { value: 0, unit: 'G' },
-            sugar: { value: 0, unit: 'G' }
+            sugar: { value: 0, unit: 'G' },
           },
-          category: foodCategory ? {
-            id: foodCategory._id,
-            name: foodCategory.name || { tr: 'Kategorisiz', en: 'Uncategorized' }
-          } : null,
+          category: foodCategory
+            ? {
+                id: foodCategory._id,
+                name: foodCategory.name || {
+                  tr: 'Kategorisiz',
+                  en: 'Uncategorized',
+                },
+              }
+            : null,
           portionSize: food.portionSize || { value: 100, unit: 'G' },
           servingSize: food.servingSize || { value: 100, unit: 'G' },
-          image: food.image || null
+          image: food.image || null,
         };
       });
     } catch (error) {
@@ -111,21 +124,21 @@ class FavoritesService {
       if (!foodId) {
         throw createError({
           statusCode: 400,
-          message: 'Besin ID\'si gerekli'
+          message: "Besin ID'si gerekli",
         });
       }
 
       // Besin ve kullanıcıyı paralel olarak kontrol et - Performans iyileştirmesi
       const [food, user] = await Promise.all([
         Food.findById(foodId),
-        User.findById(userId)
+        User.findById(userId),
       ]);
 
       // Besin var mı kontrol et
       if (!food) {
         throw createError({
           statusCode: 404,
-          message: 'Besin bulunamadı'
+          message: 'Besin bulunamadı',
         });
       }
 
@@ -133,7 +146,7 @@ class FavoritesService {
       if (!user) {
         throw createError({
           statusCode: 404,
-          message: 'Kullanıcı bulunamadı'
+          message: 'Kullanıcı bulunamadı',
         });
       }
 
@@ -145,8 +158,8 @@ class FavoritesService {
           alreadyExists: true,
           data: {
             userId: user._id,
-            foodId
-          }
+            foodId,
+          },
         };
       }
 
@@ -155,7 +168,7 @@ class FavoritesService {
       await User.findByIdAndUpdate(
         userId,
         { $push: { favoriteFoods: foodId } },
-        { new: true }
+        { new: true },
       );
 
       return {
@@ -163,8 +176,8 @@ class FavoritesService {
         message: 'Besin favorilere eklendi',
         data: {
           userId: user._id,
-          foodId
-        }
+          foodId,
+        },
       };
     } catch (error) {
       throw error;
@@ -183,9 +196,9 @@ class FavoritesService {
       const foodId = event.context.params.id;
       const user = await User.findOne({
         _id: userId,
-        favoriteFoods: { $in: [foodId] }
+        favoriteFoods: { $in: [foodId] },
       });
-      
+
       if (!user) {
         // Kullanıcı bulunamadı veya besin favorilerde değil
         // Hangi durum olduğunu kontrol et
@@ -193,12 +206,12 @@ class FavoritesService {
         if (!userExists) {
           throw createError({
             statusCode: 404,
-            message: 'Kullanıcı bulunamadı'
+            message: 'Kullanıcı bulunamadı',
           });
         } else {
           throw createError({
             statusCode: 404,
-            message: 'Bu besin favorilerinizde bulunamadı'
+            message: 'Bu besin favorilerinizde bulunamadı',
           });
         }
       }
@@ -208,7 +221,7 @@ class FavoritesService {
       await User.findByIdAndUpdate(
         userId,
         { $pull: { favoriteFoods: foodId } },
-        { new: true }
+        { new: true },
       );
 
       return {
@@ -216,8 +229,8 @@ class FavoritesService {
         message: 'Besin favorilerden kaldırıldı',
         data: {
           userId: user._id,
-          foodId
-        }
+          foodId,
+        },
       };
     } catch (error) {
       throw error;

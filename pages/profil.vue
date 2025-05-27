@@ -858,7 +858,7 @@
                           <span
                             >{{
                               favorite.nutrients
-                                .carbohydrates.value
+                                .carbohydrate.value
                             }}g</span
                           >
                         </div>
@@ -1388,9 +1388,9 @@ const fetchMeals = async () => {
                   0,
                 unit: 'g',
               },
-              carbohydrates: {
+              carbohydrate: {
                 value:
-                  food.food?.nutrients?.carbohydrates
+                  food.food?.nutrients?.carbohydrate
                     ?.value ||
                   food.food?.carbs ||
                   0,
@@ -1473,10 +1473,10 @@ const fetchFavorites = async () => {
               0,
             unit: 'g',
           },
-          carbohydrates: {
+          carbohydrate: {
             value:
-              fav.nutrients?.carbohydrates?.value ||
-              fav.food?.nutrients?.carbohydrates?.value ||
+              fav.nutrients?.carbohydrate?.value ||
+              fav.food?.nutrients?.carbohydrate?.value ||
               fav.carbs ||
               0,
             unit: 'g',

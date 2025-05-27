@@ -15,6 +15,16 @@ export function getMessageHandlers(io, socket, connectedUsers) {
   // Kullanıcıyı çevrimiçi olarak işaretle
   setUserOnlineStatus(userId, 'online');
 
+  // Helper function to emit to all user tabs
+  const emitToUser = (targetUserId, event, data) => {
+    const userSocketIds = connectedUsers.get(targetUserId);
+    if (userSocketIds) {
+      userSocketIds.forEach((socketId) => {
+        io.to(socketId).emit(event, data);
+      });
+    }
+  };
+
   return {
     // Konuşmaya ait mesajları getir
     get_messages: async (data, callback) => {
@@ -49,15 +59,10 @@ export function getMessageHandlers(io, socket, connectedUsers) {
         if (conversation) {
           conversation.participants.forEach((participant) => {
             if (participant._id.toString() !== userId) {
-              const participantSocketId = connectedUsers.get(
-                participant._id.toString(),
-              );
-              if (participantSocketId) {
-                io.to(participantSocketId).emit('messages_read', {
-                  conversationId,
-                  readBy: userId,
-                });
-              }
+              emitToUser(participant._id.toString(), 'messages_read', {
+                conversationId,
+                readBy: userId,
+              });
             }
           });
         }
@@ -114,10 +119,7 @@ export function getMessageHandlers(io, socket, connectedUsers) {
         socket.emit('new_message', message);
 
         // Alıcıya bildir
-        const receiverSocketId = connectedUsers.get(receiver._id.toString());
-        if (receiverSocketId) {
-          io.to(receiverSocketId).emit('new_message', message);
-        }
+        emitToUser(receiver._id.toString(), 'new_message', message);
       } catch (error) {
         console.error('Error sending message:', error);
       }
@@ -151,15 +153,10 @@ export function getMessageHandlers(io, socket, connectedUsers) {
         if (conversation) {
           conversation.participants.forEach((participant) => {
             if (participant._id.toString() !== userId) {
-              const participantSocketId = connectedUsers.get(
-                participant._id.toString(),
-              );
-              if (participantSocketId) {
-                io.to(participantSocketId).emit('messages_read', {
-                  conversationId,
-                  readBy: userId,
-                });
-              }
+              emitToUser(participant._id.toString(), 'messages_read', {
+                conversationId,
+                readBy: userId,
+              });
             }
           });
         }
@@ -189,16 +186,11 @@ export function getMessageHandlers(io, socket, connectedUsers) {
         if (conversation) {
           conversation.participants.forEach((participant) => {
             if (participant._id.toString() !== userId) {
-              const participantSocketId = connectedUsers.get(
-                participant._id.toString(),
-              );
-              if (participantSocketId) {
-                io.to(participantSocketId).emit('user_typing', {
-                  conversationId,
-                  userId,
-                  isTyping,
-                });
-              }
+              emitToUser(participant._id.toString(), 'user_typing', {
+                conversationId,
+                userId,
+                isTyping,
+              });
             }
           });
         }

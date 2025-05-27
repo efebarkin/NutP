@@ -1,29 +1,20 @@
 import Food from '../models/Food';
 import FoodDataService from './foodDataService';
 import createError from 'http-errors';
-import { validateFoodId, validateCreateFood, validateUpdateFood } from '../validations/foodValidation';
+import {
+  validateFoodId,
+  validateCreateFood,
+  validateUpdateFood,
+} from '../validations/foodValidation';
 import { readBody, getQuery } from 'h3';
 import { filterFoods } from '../utils/foodFilter';
+import uploadUtility from '../utils/uploadUtility.js';
 
-// server/api/foods/uploadPhoto.post.js
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { randomUUID } from 'crypto';
-import multer from 'multer';
-import { promisify } from 'util';
-
-// S3 istemcisini yapılandır
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION || 'eu-central-1', // Varsayılan bölge
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  },
+// Multer middleware for food photo uploads
+const uploadMiddleware = uploadUtility.createMulterMiddleware({
+  fieldName: 'photo',
+  fileSize: 10 * 1024 * 1024, // 10MB limit
 });
-
-// Multer yapılandırması
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
-const uploadMiddleware = promisify(upload.single('photo'));
 
 class FoodService {
   constructor() {
@@ -40,85 +31,54 @@ class FoodService {
         throw createError({
           statusCode: 400,
           message: 'Validasyon hatası',
-          validationErrors: validationResult.error
+          validationErrors: validationResult.error,
         });
       }
 
       // Validasyondan geçen veriyi kullan
       const validatedData = validationResult.data;
-      
+
       // Yeni besin oluştur
       const newFood = new Food(validatedData);
-      
+
       // Besini kaydet
       await newFood.save();
-      
+
       return {
         success: true,
         food: newFood,
-        message: 'Besin başarıyla eklendi'
+        message: 'Besin başarıyla eklendi',
       };
     } catch (error) {
       console.error('Besin ekleme hatası:', error);
-      
+
       // Zaten HTTP hatası ise doğrudan fırlat
       if (error.statusCode && error.expose) {
         throw error;
       }
-      
+
       // Mongoose validation hatası kontrolü
       if (error.name === 'ValidationError') {
         throw createError({
           statusCode: 400,
-          message: 'Geçersiz veri formatı: ' + Object.values(error.errors).map(e => e.message).join(', ')
+          message:
+            'Geçersiz veri formatı: ' +
+            Object.values(error.errors)
+              .map((e) => e.message)
+              .join(', '),
         });
       }
-      
+
       // Genel hata mesajı
       throw createError({
         statusCode: 500,
-        message: 'Besin eklenirken bir hata oluştu'
+        message: 'Besin eklenirken bir hata oluştu',
       });
     }
   }
-  
+
   // Besin detayını getir
   async getFoodById(event) {
-      const id = event.context.params.id;
-      // Zod ile ID validasyonu
-      const validationResult = validateFoodId(id);
-      if (!validationResult.success) {
-        throw createError({
-          statusCode: 400,
-          message: 'Geçersiz besin ID formatı',
-          validationErrors: validationResult.error
-        });
-      }
-
-      try {
-        //Lean() metodu sadece veri alır, modelleme yapmaz
-        const food = await Food.findById(id).lean();
-        if(!food) {
-          throw createError({
-              statusCode: 404,
-              message: 'Besin bulunamadı'
-          });
-        }
-        return food;
-      } catch (error) {
-        // Eğer zaten bir HTTP error ise tekrar fırlat
-        if (error.statusCode && error.expose) {
-          throw error;
-        }
-        throw createError({
-          statusCode: 500,
-          message: 'Besin bilgileri alınamadı'
-        });
-      }
-  }
-  // Besin sil
-  async deleteFood(event) {
-
     const id = event.context.params.id;
     // Zod ile ID validasyonu
     const validationResult = validateFoodId(id);
@@ -126,22 +86,56 @@ class FoodService {
       throw createError({
         statusCode: 400,
         message: 'Geçersiz besin ID formatı',
-        validationErrors: validationResult.error
+        validationErrors: validationResult.error,
       });
     }
 
-    try { 
-      const deleted = await Food.findByIdAndDelete(id);
-      if(!deleted) {
+    try {
+      //Lean() metodu sadece veri alır, modelleme yapmaz
+      const food = await Food.findById(id).lean();
+      if (!food) {
         throw createError({
           statusCode: 404,
-          message: 'Besin bulunamadı'
+          message: 'Besin bulunamadı',
         });
       }
-      return{
+      return food;
+    } catch (error) {
+      // Eğer zaten bir HTTP error ise tekrar fırlat
+      if (error.statusCode && error.expose) {
+        throw error;
+      }
+      throw createError({
+        statusCode: 500,
+        message: 'Besin bilgileri alınamadı',
+      });
+    }
+  }
+  // Besin sil
+  async deleteFood(event) {
+    const id = event.context.params.id;
+    // Zod ile ID validasyonu
+    const validationResult = validateFoodId(id);
+    if (!validationResult.success) {
+      throw createError({
+        statusCode: 400,
+        message: 'Geçersiz besin ID formatı',
+        validationErrors: validationResult.error,
+      });
+    }
+
+    try {
+      const deleted = await Food.findByIdAndDelete(id);
+      if (!deleted) {
+        throw createError({
+          statusCode: 404,
+          message: 'Besin bulunamadı',
+        });
+      }
+      return {
         success: true,
         message: 'Besin silindi',
-        deletedId: id
+        deletedId: id,
       };
     } catch (error) {
       // Eğer zaten bir HTTP error ise tekrar fırlat
@@ -150,8 +144,8 @@ class FoodService {
       }
       throw createError({
         statusCode: 500,
-          message: 'Besin silme başarısız'
-        });
+        message: 'Besin silme başarısız',
+      });
     }
   }
   // Besin güncelle
@@ -163,68 +157,72 @@ class FoodService {
       throw createError({
         statusCode: 400,
         message: 'Geçersiz besin ID formatı',
-        validationErrors: idValidationResult.error
+        validationErrors: idValidationResult.error,
       });
     }
 
     try {
       // Request body'den gelen verileri al
       const body = await readBody(event);
-      
+
       // Zod ile güncelleme verisi validasyonu
       const validationResult = validateUpdateFood(body);
       if (!validationResult.success) {
         throw createError({
           statusCode: 400,
           message: 'Validasyon hatası',
-          validationErrors: validationResult.error
+          validationErrors: validationResult.error,
         });
       }
-      
+
       // Validasyondan geçen veriyi kullan
       const validatedData = validationResult.data;
-      
+
       // Besinin var olup olmadığını kontrol et
       const existingFood = await Food.findById(id);
-      if(!existingFood) {
-          throw createError({
-              statusCode: 404,
-              message: 'Güncellenecek besin bulunamadı'
-          });
+      if (!existingFood) {
+        throw createError({
+          statusCode: 404,
+          message: 'Güncellenecek besin bulunamadı',
+        });
       }
-      
+
       // Besini güncelle
       const updatedFood = await Food.findByIdAndUpdate(
-          id,
-          { $set: validatedData },
-          { new: true, runValidators: true }
+        id,
+        { $set: validatedData },
+        { new: true, runValidators: true },
       ).lean();
 
-      return { 
-          success: true, 
-          food: updatedFood,
-          message: 'Besin başarıyla güncellendi'
+      return {
+        success: true,
+        food: updatedFood,
+        message: 'Besin başarıyla güncellendi',
       };
     } catch (error) {
-        console.error('Besin güncelleme hatası:', error);
-        
-        // Zaten HTTP hatası ise doğrudan fırlat
-        if (error.statusCode && error.expose) {
-            throw error;
-        }
-        
-        // Mongoose validation hatası kontrolü
-        if (error.name === 'ValidationError') {
-            throw createError({
-                statusCode: 400,
-                message: 'Geçersiz veri formatı: ' + Object.values(error.errors).map(e => e.message).join(', ')
-            });
-        }
-        
+      console.error('Besin güncelleme hatası:', error);
+
+      // Zaten HTTP hatası ise doğrudan fırlat
+      if (error.statusCode && error.expose) {
+        throw error;
+      }
+
+      // Mongoose validation hatası kontrolü
+      if (error.name === 'ValidationError') {
         throw createError({
-            statusCode: 500,
-            message: 'Besin güncellenirken bir hata oluştu'
+          statusCode: 400,
+          message:
+            'Geçersiz veri formatı: ' +
+            Object.values(error.errors)
+              .map((e) => e.message)
+              .join(', '),
         });
+      }
+
+      throw createError({
+        statusCode: 500,
+        message: 'Besin güncellenirken bir hata oluştu',
+      });
     }
   }
 
@@ -241,18 +239,18 @@ class FoodService {
 
       // Build query
       const dbQuery = {};
-      
+
       // Temel filtreler
       if (search) {
         dbQuery['$or'] = [
           { 'name.tr': { $regex: search, $options: 'i' } },
-          { 'name.en': { $regex: search, $options: 'i' } }
+          { 'name.en': { $regex: search, $options: 'i' } },
         ];
       }
       if (category) {
         dbQuery.category = category;
       }
-      
+
       // Gelişmiş filtreler
       const advancedFilters = filterFoods(query);
       if (advancedFilters && advancedFilters.length > 0) {
@@ -276,13 +274,15 @@ class FoodService {
 
       // Get category statistics
       const categories = await Food.aggregate([
-        { $group: { 
-          _id: '$category', 
-          count: { $sum: 1 },
-          avgCalories: { $avg: '$nutrients.energy.value' },
-          avgProtein: { $avg: '$nutrients.protein.value' }
-        }},
-        { $sort: { count: -1 } }
+        {
+          $group: {
+            _id: '$category',
+            count: { $sum: 1 },
+            avgCalories: { $avg: '$nutrients.energy.value' },
+            avgProtein: { $avg: '$nutrients.protein.value' },
+          },
+        },
+        { $sort: { count: -1 } },
       ]);
 
       // Return response
@@ -292,20 +292,20 @@ class FoodService {
           page,
           limit,
           total,
-          pages: Math.ceil(total / limit)
+          pages: Math.ceil(total / limit),
         },
         stats: {
           categories,
-          total
+          total,
         },
         // Protein kategorileri için istatistik
-        proteinCategories: ['low', 'medium', 'high']
+        proteinCategories: ['low', 'medium', 'high'],
       };
     } catch (error) {
       console.error('Error fetching foods:', error);
       throw createError({
         statusCode: 500,
-        message: 'Internal server error'
+        message: 'Internal server error',
       });
     }
   }
@@ -317,25 +317,25 @@ class FoodService {
 
       if (!q) {
         return {
-          foods: []
+          foods: [],
         };
       }
 
       // Case-insensitive arama yapalım
       const foods = await Food.find({
-        name: { $regex: q, $options: 'i' }
+        name: { $regex: q, $options: 'i' },
       })
-      .select('name calories protein carbs fat')
-      .limit(10);
+        .select('name calories protein carbs fat')
+        .limit(10);
 
       return {
-        foods
+        foods,
       };
     } catch (error) {
       console.error('Food search error:', error);
       throw createError({
         statusCode: 500,
-        message: 'Besin arama sırasında bir hata oluştu'
+        message: 'Besin arama sırasında bir hata oluştu',
       });
     }
   }
@@ -344,26 +344,26 @@ class FoodService {
   async searchFoodsPost(event) {
     try {
       const body = await readBody(event);
-      
+
       if (!body.query) {
         throw createError({
           statusCode: 400,
-          message: 'Arama terimi gerekli'
+          message: 'Arama terimi gerekli',
         });
       }
 
       const foods = await Food.find({
         $or: [
           { 'name.tr': { $regex: body.query, $options: 'i' } },
-          { name: { $regex: body.query, $options: 'i' } }
-        ]
+          { name: { $regex: body.query, $options: 'i' } },
+        ],
       }).limit(10);
 
       return { foods };
     } catch (error) {
       throw createError({
         statusCode: error.statusCode || 500,
-        message: error.message || 'Server error'
+        message: error.message || 'Server error',
       });
     }
   }
@@ -373,13 +373,13 @@ class FoodService {
     try {
       const skip = (pageNumber - 1) * pageSize;
       let searchQuery = {};
-      
+
       if (query && query.trim()) {
         searchQuery = {
           $or: [
             { 'name.tr': { $regex: query, $options: 'i' } },
-            { 'name.en': { $regex: query, $options: 'i' } }
-          ]
+            { 'name.en': { $regex: query, $options: 'i' } },
+          ],
         };
       }
 
@@ -388,14 +388,14 @@ class FoodService {
           .skip(skip)
           .limit(pageSize)
           .sort({ 'name.tr': 1 }),
-        Food.countDocuments(searchQuery)
+        Food.countDocuments(searchQuery),
       ]);
 
       return {
         foods,
         totalHits: totalCount,
         currentPage: pageNumber,
-        totalPages: Math.ceil(totalCount / pageSize)
+        totalPages: Math.ceil(totalCount / pageSize),
       };
     } catch (error) {
       console.error('Error searching foods:', error);
@@ -406,36 +406,46 @@ class FoodService {
   async importFromUSDA(pageSize = 100, pageNumber = 1) {
     try {
       const result = await this.usdaService.getFoodsList(pageSize, pageNumber);
-      
+
       for (const usdaFood of result.foods) {
-        const existingFood = await Food.findOne({ 'metadata.fdcId': usdaFood.fdcId });
-        
+        const existingFood = await Food.findOne({
+          'metadata.fdcId': usdaFood.fdcId,
+        });
+
         if (!existingFood) {
           const food = new Food({
             name: {
               en: usdaFood.description,
-              tr: usdaFood.description // Başlangıçta İngilizce ismi kullan
+              tr: usdaFood.description, // Başlangıçta İngilizce ismi kullan
             },
             nutrients: {
               energy: this.extractNutrient(usdaFood, 'Energy'),
               protein: this.extractNutrient(usdaFood, 'Protein'),
-              carbohydrate: this.extractNutrient(usdaFood, 'Carbohydrate, by difference'),
+              carbohydrate: this.extractNutrient(
+                usdaFood,
+                'Carbohydrate, by difference',
+              ),
               fat: this.extractNutrient(usdaFood, 'Total lipid (fat)'),
               fiber: this.extractNutrient(usdaFood, 'Fiber, total dietary'),
-              sugar: this.extractNutrient(usdaFood, 'Sugars, total including NLEA')
+              sugar: this.extractNutrient(
+                usdaFood,
+                'Sugars, total including NLEA',
+              ),
             },
             category: this.determineCategory(usdaFood),
             source: 'usda',
-            portions: [{
-              name: '100 gram',
-              weight: 100,
-              isDefault: true
-            }],
+            portions: [
+              {
+                name: '100 gram',
+                weight: 100,
+                isDefault: true,
+              },
+            ],
             metadata: {
               fdcId: usdaFood.fdcId,
               isVerified: true,
-              addedBy: 'system'
-            }
+              addedBy: 'system',
+            },
           });
 
           await food.save();
@@ -444,7 +454,7 @@ class FoodService {
 
       return {
         imported: result.foods.length,
-        totalPages: result.totalPages
+        totalPages: result.totalPages,
       };
     } catch (error) {
       console.error('Error importing from USDA:', error);
@@ -453,91 +463,103 @@ class FoodService {
   }
   // USDA besin verilerinden besin değerini çıkar
   extractNutrient(food, nutrientName) {
-    const nutrient = food.foodNutrients?.find(n => 
-      n.nutrientName?.toLowerCase().includes(nutrientName.toLowerCase()) ||
-      n.name?.toLowerCase().includes(nutrientName.toLowerCase())
+    const nutrient = food.foodNutrients?.find(
+      (n) =>
+        n.nutrientName?.toLowerCase().includes(nutrientName.toLowerCase()) ||
+        n.name?.toLowerCase().includes(nutrientName.toLowerCase()),
     );
 
     return {
-      value: nutrient ? (nutrient.value || nutrient.amount || 0) : 0,
-      unit: nutrient ? (nutrient.unitName || 'g') : 'g'
+      value: nutrient ? nutrient.value || nutrient.amount || 0 : 0,
+      unit: nutrient ? nutrient.unitName || 'g' : 'g',
     };
   }
   // Besin kategorisini belirle
   determineCategory(food) {
     const description = food.description.toLowerCase();
-    
-    if (description.includes('milk') || description.includes('cheese') || description.includes('yogurt')) {
+
+    if (
+      description.includes('milk') ||
+      description.includes('cheese') ||
+      description.includes('yogurt')
+    ) {
       return 'dairy';
-    } else if (description.includes('meat') || description.includes('chicken') || description.includes('fish')) {
+    } else if (
+      description.includes('meat') ||
+      description.includes('chicken') ||
+      description.includes('fish')
+    ) {
       return 'meat';
-    } else if (description.includes('vegetable') || description.includes('carrot') || description.includes('tomato')) {
+    } else if (
+      description.includes('vegetable') ||
+      description.includes('carrot') ||
+      description.includes('tomato')
+    ) {
       return 'vegetable';
-    } else if (description.includes('fruit') || description.includes('apple') || description.includes('banana')) {
+    } else if (
+      description.includes('fruit') ||
+      description.includes('apple') ||
+      description.includes('banana')
+    ) {
       return 'fruit';
-    } else if (description.includes('bread') || description.includes('rice') || description.includes('pasta')) {
+    } else if (
+      description.includes('bread') ||
+      description.includes('rice') ||
+      description.includes('pasta')
+    ) {
       return 'grain';
-    } else if (description.includes('juice') || description.includes('beverage') || description.includes('drink')) {
+    } else if (
+      description.includes('juice') ||
+      description.includes('beverage') ||
+      description.includes('drink')
+    ) {
       return 'beverage';
     }
-    
+
     return 'other';
   }
 
-  async uploadPhoto(event){
+  async uploadPhoto(event) {
     try {
       // Dosyayı al
       await uploadMiddleware(event.node.req, event.node.res);
       const file = event.node.req.file;
-      
+
       if (!file) {
         return {
           statusCode: 400,
           body: JSON.stringify({ error: 'Dosya bulunamadı' }),
         };
       }
-  
-      // Dosya adını oluştur
-      const fileExtension = file.originalname.split('.').pop();
-      const fileName = `foods/${randomUUID()}.${fileExtension}`;
-      const bucketName = process.env.AWS_BUCKET_NAME || 'nutpbucket';
-  
-      // S3'e yükleme komutu
-      const putCommand = new PutObjectCommand({
-        Bucket: bucketName,
-        Key: fileName,
-        Body: file.buffer,
-        ContentType: file.mimetype,
-        // ACL kaldırıldı - bucket ACL'lere izin vermiyor
-      });
-  
-      // S3'e yükle
-      await s3Client.send(putCommand);
-  
-      // Dosya URL'sini oluştur
-      const region = process.env.AWS_REGION || 'eu-central-1';
-      
-      // AWS S3 için doğru URL formatını kullan
-      // eu-north-1 bölgesi için özel format
-      let fileUrl;
-      if (region === 'eu-north-1') {
-        // Stockholm bölgesi için doğru format
-        fileUrl = `https://s3.eu-north-1.amazonaws.com/${bucketName}/${fileName}`;
-      } else {
-        fileUrl = `https://s3.${region}.amazonaws.com/${bucketName}/${fileName}`;
-      }
-      
-      console.log('Yüklenen dosya URL:', fileUrl);
-      console.log('Bucket:', bucketName, 'Region:', region, 'FileName:', fileName);
-  
+
+      // Upload image using shared utility
+      const uploadResult = await uploadUtility.uploadOptimizedImage(
+        file.buffer,
+        {
+          folder: 'foods',
+          optimization: {
+            width: 400,
+            height: 300,
+            quality: 85,
+          },
+          format: 'jpeg',
+        },
+      );
+
+      console.log('Besin fotoğrafı yüklendi:', uploadResult.url);
+
       return {
-        url: fileUrl
+        url: uploadResult.url,
+        fileName: uploadResult.key,
+        originalSize: uploadResult.originalSize,
+        optimizedSize: uploadResult.optimizedSize,
+        compressionRatio: uploadResult.compressionRatio,
       };
     } catch (error) {
       console.error('Fotoğraf yükleme hatası:', error);
       return {
         statusCode: 500,
-        error: 'Fotoğraf yüklenirken bir hata oluştu'
+        error: 'Fotoğraf yüklenirken bir hata oluştu',
       };
     }
   }

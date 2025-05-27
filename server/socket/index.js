@@ -10,7 +10,8 @@ import {
   isRedisConnected,
 } from '../utils/redis';
 
-// Kullanıcı bağlantılarını saklamak için
+// Kullanıcı bağlantılarını saklamak için (çoklu sekme desteği)
+// Format: userId -> Set of socketIds
 const connectedUsers = new Map();
 
 // Güvenlik için rate limiting
@@ -113,7 +114,7 @@ export const setupSocketHandlers = (io) => {
     io.use(async (socket, next) => {
       try {
         console.log('Socket bağlantı isteği alındı');
-        
+
         // Handshake bilgilerini detaylı logla
         const handshakeInfo = {
           id: socket.id,
@@ -125,12 +126,17 @@ export const setupSocketHandlers = (io) => {
           queryUserId: socket.handshake.query?.userId || 'Yok',
           authToken: socket.handshake.auth?.token ? 'Mevcut' : 'Yok',
           queryToken: socket.handshake.query?.token ? 'Mevcut' : 'Yok',
-          headerAuth: socket.handshake.headers?.authorization ? 'Mevcut' : 'Yok',
-          cookiePresent: socket.handshake.headers?.cookie ? 'Mevcut' : 'Yok'
+          headerAuth: socket.handshake.headers?.authorization
+            ? 'Mevcut'
+            : 'Yok',
+          cookiePresent: socket.handshake.headers?.cookie ? 'Mevcut' : 'Yok',
         };
-        
-        console.log('Socket handshake detayları:', JSON.stringify(handshakeInfo, null, 2));
-        
+
+        console.log(
+          'Socket handshake detayları:',
+          JSON.stringify(handshakeInfo, null, 2),
+        );
+
         // Token'ı farklı yerlerden almayı dene
         let token =
           socket.handshake.auth?.token ||
@@ -153,66 +159,89 @@ export const setupSocketHandlers = (io) => {
         console.log('Socket auth token kontrolü:', !!token);
 
         // Kullanıcı ID'sini query veya auth'dan almayı dene
-        const queryUserId = socket.handshake.query?.userId || socket.handshake.auth?.userId;
-        
+        const queryUserId =
+          socket.handshake.query?.userId || socket.handshake.auth?.userId;
+
         // Token yoksa ama userId varsa, userId ile devam et (geliştirme modunda)
         if (!token && queryUserId && process.env.NODE_ENV === 'development') {
-          console.log('Geliştirme modu: Token bulunamadı, ancak userId mevcut:', queryUserId);
+          console.log(
+            'Geliştirme modu: Token bulunamadı, ancak userId mevcut:',
+            queryUserId,
+          );
           socket.userId = queryUserId;
           socket.tokenExpired = true;
           return next();
         }
-        
+
         if (!token) {
           console.error('Socket bağlantısı için token ve userId bulunamadı');
           return next(new Error('Authentication error: Token not provided'));
         }
-        
+
         try {
           // Token'ı doğrula
           const decoded = jwt.verify(token, process.env.JWT_SECRET);
-          
+
           // Kullanıcı ID'sini socket'e ekle
           socket.userId = decoded.userId;
           console.log('Socket için token doğrulandı, userId:', decoded.userId);
-          
+
           // Token'dan çıkarılan userId ile query/auth'dan gelen userId karşılaştır
           if (queryUserId && queryUserId !== decoded.userId.toString()) {
             console.warn('Token userId ile query/auth userId uyuşmuyor:', {
               tokenUserId: decoded.userId,
-              queryUserId
+              queryUserId,
             });
-            
+
             // Güvenlik nedeniyle token'dan gelen userId'yi kullan
             socket.userId = decoded.userId;
           }
-          
-          // Kullanıcı ID'sini connectedUsers Map'ine ekle
+
+          // Kullanıcı ID'sini connectedUsers Map'ine ekle (multi-tab support)
           if (socket.userId) {
-            connectedUsers.set(socket.userId.toString(), socket.id);
-            console.log(`Kullanıcı bağlandı ve connectedUsers'a eklendi: ${socket.userId} -> ${socket.id}`);
-            console.log('Güncel bağlı kullanıcılar:', Array.from(connectedUsers.entries()));
+            const userId = socket.userId.toString();
+            if (!connectedUsers.has(userId)) {
+              connectedUsers.set(userId, new Set());
+            }
+            connectedUsers.get(userId).add(socket.id);
+            console.log(
+              `Kullanıcı bağlandı ve connectedUsers'a eklendi: ${userId} -> ${socket.id}`,
+            );
+            console.log(
+              `User ${userId} now has ${connectedUsers.get(userId).size} active connection(s)`,
+            );
           }
-          
+
           // Bağlantıyı kabul et
           return next();
         } catch (verifyError) {
           console.error('Token doğrulama hatası:', verifyError.message);
-          
+
           // Token süresi dolmuşsa, userId'yi çıkarmayı dene
-          if (verifyError.name === 'TokenExpiredError' || verifyError.name === 'JsonWebTokenError') {
-            console.log('Token geçersiz veya süresi dolmuş, alternatif doğrulama deneniyor...');
-            
+          if (
+            verifyError.name === 'TokenExpiredError' ||
+            verifyError.name === 'JsonWebTokenError'
+          ) {
+            console.log(
+              'Token geçersiz veya süresi dolmuş, alternatif doğrulama deneniyor...',
+            );
+
             try {
               // Süresi dolmuş token'dan userId'yi çıkar
               const decodedExpired = jwt.decode(token);
-              
+
               // Eğer token'dan userId çıkarılabildiyse veya query/auth'dan userId geldiyse
               if ((decodedExpired && decodedExpired.userId) || queryUserId) {
                 // Öncelikle token'dan çıkarılan userId'yi kullan, yoksa query/auth'dan geleni kullan
-                socket.userId = (decodedExpired && decodedExpired.userId) ? decodedExpired.userId : queryUserId;
-                console.log('Alternatif doğrulama başarılı, userId:', socket.userId);
-                
+                socket.userId =
+                  decodedExpired && decodedExpired.userId
+                    ? decodedExpired.userId
+                    : queryUserId;
+                console.log(
+                  'Alternatif doğrulama başarılı, userId:',
+                  socket.userId,
+                );
+
                 // Bağlantıyı kabul et, ancak istemciye token yenilemesi gerektiğini bildir
                 socket.tokenExpired = true;
                 return next();
@@ -221,16 +250,21 @@ export const setupSocketHandlers = (io) => {
               console.error('Token decode hatası:', decodeError.message);
             }
           }
-          
+
           // Eğer query/auth'dan userId geldiyse, token hatası olsa bile bağlantıya izin ver
           if (queryUserId) {
-            console.log('Token doğrulanamadı, ancak queryUserId mevcut:', queryUserId);
+            console.log(
+              'Token doğrulanamadı, ancak queryUserId mevcut:',
+              queryUserId,
+            );
             socket.userId = queryUserId;
             socket.tokenExpired = true;
             return next();
           }
-          
-          return next(new Error('Authentication error: ' + verifyError.message));
+
+          return next(
+            new Error('Authentication error: ' + verifyError.message),
+          );
         }
       } catch (error) {
         console.error('Socket auth middleware hatası:', error);
@@ -246,8 +280,15 @@ export const setupSocketHandlers = (io) => {
           ip: socket.handshake.address,
         });
 
-        // Kullanıcıyı bağlı kullanıcılar listesine ekle
-        connectedUsers.set(userId, socket.id);
+        // Kullanıcıyı bağlı kullanıcılar listesine ekle (çoklu sekme desteği)
+        if (!connectedUsers.has(userId)) {
+          connectedUsers.set(userId, new Set());
+        }
+        connectedUsers.get(userId).add(socket.id);
+
+        console.log(
+          `[SOCKET:MULTI-TAB] User ${userId} now has ${connectedUsers.get(userId).size} active connection(s)`,
+        );
 
         // Kullanıcının çevrimiçi olduğunu Redis'e kaydet
         setUserOnlineStatus(userId, 'online').catch((err) =>
@@ -393,23 +434,44 @@ export const setupSocketHandlers = (io) => {
           try {
             logSocketEvent('DISCONNECT', userId, 'disconnected', { reason });
 
-            // Kullanıcıyı bağlı kullanıcılar listesinden çıkar
-            connectedUsers.delete(userId);
+            // Kullanıcıyı bağlı kullanıcılar listesinden çıkar (çoklu sekme desteği)
+            if (connectedUsers.has(userId)) {
+              const userSockets = connectedUsers.get(userId);
+              userSockets.delete(socket.id);
 
-            // Rate limiter'dan temizle
-            rateLimiter.delete(userId);
+              console.log(
+                `[SOCKET:MULTI-TAB] User ${userId} disconnected one tab, remaining: ${userSockets.size} connection(s)`,
+              );
 
-            // Kullanıcının çevrimdışı olduğunu Redis'e kaydet
-            // Ancak 1 saat süreyle "son görülme" bilgisini sakla
-            await setUserOnlineStatus(userId, 'offline', 3600).catch((err) =>
-              logSocketEvent('ERROR', userId, 'redis_error', err.message),
-            );
+              // Eğer kullanıcının hiç aktif bağlantısı kalmadıysa
+              if (userSockets.size === 0) {
+                connectedUsers.delete(userId);
 
-            // Kullanıcının çevrimdışı olduğunu bildir
-            io.emit('user_status_change', {
-              userId: userId,
-              status: 'offline',
-            });
+                // Rate limiter'dan temizle
+                rateLimiter.delete(userId);
+
+                // Kullanıcının çevrimdışı olduğunu Redis'e kaydet
+                // 1 saat süreyle "son görülme" bilgisini sakla
+                await setUserOnlineStatus(userId, 'offline', 3600).catch(
+                  (err) =>
+                    logSocketEvent('ERROR', userId, 'redis_error', err.message),
+                );
+
+                // Kullanıcının çevrimdışı olduğunu bildir
+                io.emit('user_status_change', {
+                  userId: userId,
+                  status: 'offline',
+                });
+
+                console.log(
+                  `[SOCKET:MULTI-TAB] User ${userId} is now completely offline`,
+                );
+              } else {
+                console.log(
+                  `[SOCKET:MULTI-TAB] User ${userId} still has active connections, staying online`,
+                );
+              }
+            }
 
             // Eğer disconnect işleyicisi tanımlanmışsa çağır
             if (userHandlers && userHandlers.disconnect) {
@@ -441,8 +503,13 @@ export const setupSocketHandlers = (io) => {
     // Periyodik olarak bağlantı durumunu kontrol et
     setInterval(() => {
       const connectedCount = connectedUsers.size;
+      let totalConnections = 0;
+      connectedUsers.forEach((sockets) => {
+        totalConnections += sockets.size;
+      });
+
       console.log(
-        `[SOCKET:INFO] ${new Date().toISOString()} - Connected users: ${connectedCount}`,
+        `[SOCKET:INFO] ${new Date().toISOString()} - Connected users: ${connectedCount} (Total connections: ${totalConnections})`,
       );
     }, 60000); // Her dakika
 
