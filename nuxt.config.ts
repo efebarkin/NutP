@@ -4,22 +4,18 @@ export default defineNuxtConfig({
     strict: true,
   },
   devtools: { enabled: true },
-  modules: [
-    '@nuxtjs/tailwindcss',
-    '@pinia/nuxt',
-    '@vueuse/nuxt',
-  ],
+  modules: ['@nuxtjs/tailwindcss', '@pinia/nuxt', '@vueuse/nuxt'],
   // @ts-ignore - Pinia yapılandırması için TypeScript hatası görmezden gelinecek
   pinia: {
     autoImports: ['defineStore', 'acceptHMRUpdate'],
   },
   plugins: [
-    '~/plugins/csrf.js' // CSRF token plugin'i ekle
+    '~/plugins/csrf.js', // CSRF token plugin'i ekle
   ],
   app: {
     layoutTransition: {
       name: 'admin-page',
-      mode: 'out-in'
+      mode: 'out-in',
     },
     head: {
       title: 'NutP',
@@ -30,35 +26,36 @@ export default defineNuxtConfig({
         {
           src: 'https://kit.fontawesome.com/a076d05399.js',
           async: true,
-          crossorigin: 'anonymous'
-        }
+          crossorigin: 'anonymous',
+        },
       ],
       link: [
         {
           rel: 'stylesheet',
-          href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'
+          href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
         },
         {
           rel: 'stylesheet',
-          href: 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css'
+          href: 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
         },
         {
           rel: 'stylesheet',
-          href: 'https://fonts.googleapis.com/icon?family=Material+Icons'
-        }
+          href: 'https://fonts.googleapis.com/icon?family=Material+Icons',
+        },
       ],
       // Content Security Policy ayarları - görsel kaynaklarını genişlet
       meta: [
         {
           name: 'Content-Security-Policy',
-          content: "img-src 'self' data: blob: https:;"
-        }
-      ]
+          content: "img-src 'self' data: blob: https:;",
+        },
+      ],
     },
   },
   css: [
     '@/assets/css/main.css',
     '@/assets/css/admin-transitions.css',
+    '@/assets/css/calculator-animations.css',
   ],
   build: {
     transpile: ['vue-toastification'],
@@ -71,7 +68,7 @@ export default defineNuxtConfig({
     },
     routeRules: {
       '/**': { isr: true },
-      '/socket.io/**': { proxy: 'http://localhost:3000' }
+      '/socket.io/**': { proxy: 'http://localhost:3000' },
     },
   },
   $development: {
@@ -81,7 +78,7 @@ export default defineNuxtConfig({
       },
     },
     routeRules: {
-      '/socket.io/**': { proxy: '' }
+      '/socket.io/**': { proxy: '' },
     },
   },
   $env: {
@@ -109,9 +106,9 @@ export default defineNuxtConfig({
   compatibilityDate: '2024-12-29',
   // Nitro yapılandırması - server middleware'leri ve diğer ayarlar burada tanımlanır
   nitro: {
-    plugins: ["~/server/db/index.js"],
+    plugins: ['~/server/db/index.js'],
     experimental: {
-      asyncContext: true
+      asyncContext: true,
     },
     // Server routes yapılandırması
     routeRules: {
@@ -120,9 +117,10 @@ export default defineNuxtConfig({
         cors: true,
         headers: {
           'Access-Control-Allow-Methods': 'GET,HEAD,PUT,PATCH,POST,DELETE',
-          'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-CSRF-Token'
-        }
-      }
-    }
-  }
+          'Access-Control-Allow-Headers':
+            'Content-Type,Authorization,X-CSRF-Token',
+        },
+      },
+    },
+  },
 });
