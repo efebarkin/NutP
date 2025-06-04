@@ -4,46 +4,86 @@ import createError from 'http-errors';
 import { ErrorTypes } from '~/server/utils/error';
 import { readBody } from 'h3';
 import mealPhotoService from './mealPhotoService'; // Import mealPhotoService
+import {
+  validateCreateMeal,
+  validateUpdateMeal,
+  validateMealId,
+} from '../validations/mealValidation';
 
 class MealService {
   async createMeal(event) {
     try {
       // Get authenticated user from context (provided by defineAuthenticatedHandler)
       const user = event.context.auth?.user;
-      if (!user) {
+      if (!user || !user._id) {
+        console.error(
+          '[MealService] User not authenticated or user ID missing:',
+          user,
+        );
         throw createError({
           statusCode: 401,
-          message: 'Unauthorized',
+          message:
+            'Unauthorized: User not authenticated or user ID is missing.',
         });
       }
 
       // Request body'den verileri al
       const body = await readBody(event);
+      console.log(
+        '[MealService] Received body for createMeal:',
+        JSON.stringify(body, null, 2),
+      );
 
-      // Gerekli alanları kontrol et
-      if (
-        !body.name ||
-        !body.type ||
-        !body.date ||
-        !Array.isArray(body.foods) ||
-        body.foods.length === 0
-      ) {
+      // userId'yi body'ye ekle
+      const dataToValidate = {
+        ...body,
+        userId: user._id.toString(), // user._id'yi string'e çevir
+      };
+      console.log(
+        '[MealService] Data to validate for createMeal:',
+        JSON.stringify(dataToValidate, null, 2),
+      );
+
+      // Zod ile validasyon yap
+      const validation = validateCreateMeal(dataToValidate);
+      if (!validation.success) {
+        console.error(
+          '[MealService] Zod validation failed:',
+          JSON.stringify(validation.error.flatten(), null, 2),
+        );
+        const formattedErrors = validation.error.flatten();
+
+        // İlk alan hatasını veya genel bir mesajı al
+        const firstFieldErrorMessage = Object.values(
+          formattedErrors.fieldErrors,
+        )[0]?.[0];
+        const firstFormErrorMessage = formattedErrors.formErrors[0];
+
+        let errorMessage = 'Geçersiz veri formatı.';
+        if (firstFieldErrorMessage) {
+          errorMessage = firstFieldErrorMessage;
+        } else if (firstFormErrorMessage) {
+          errorMessage = firstFormErrorMessage;
+        } else if (
+          validation.error.issues &&
+          validation.error.issues.length > 0
+        ) {
+          errorMessage = validation.error.issues
+            .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+            .join('; ');
+        }
+
         throw createError({
           statusCode: 400,
-          message: 'Eksik bilgi: name, type, date ve en az bir besin gerekli',
+          message: errorMessage,
+          data: formattedErrors,
         });
       }
 
-      // Foods array'indeki her öğeyi kontrol et
-      const foodPromises = body.foods.map(async (food) => {
-        if (!food.foodId || !food.quantity) {
-          throw createError({
-            statusCode: 400,
-            message: 'Her besin için foodId ve quantity gerekli',
-          });
-        }
+      const validatedData = validation.data;
 
-        // Food'un veritabanında var olduğunu kontrol et
+      // Foods array'indeki her besin için veritabanında varlığını kontrol et
+      const foodPromises = validatedData.foods.map(async (food) => {
         const existingFood = await Food.findById(food.foodId);
         if (!existingFood) {
           throw createError({
@@ -51,17 +91,7 @@ class MealService {
             message: `${food.foodId} ID'li besin bulunamadı`,
           });
         }
-
-        return {
-          foodId: food.foodId,
-          quantity: {
-            value:
-              typeof food.quantity === 'object'
-                ? food.quantity.value
-                : parseInt(food.quantity),
-            unit: typeof food.quantity === 'object' ? food.quantity.unit : 'g',
-          },
-        };
+        return food;
       });
 
       // Tüm food promise'larını çözümle
@@ -69,11 +99,14 @@ class MealService {
 
       // Yeni meal oluştur
       const meal = new Meal({
-        userId: user._id,
-        name: body.name,
-        type: body.type,
-        date: new Date(body.date),
+        userId: user._id, // Auth'dan gelen user ID
+        name: validatedData.name,
+        type: validatedData.type,
+        date: validatedData.date,
         foods: validatedFoods,
+        notes: validatedData.notes,
+        tags: validatedData.tags,
+        photoUrl: validatedData.photoUrl,
       });
 
       // Meal'i kaydet
@@ -132,11 +165,51 @@ class MealService {
           message: 'Unauthorized',
         });
       }
+
       const mealId = event.context.params.id;
       const updateData = await readBody(event);
 
+      // Meal ID validasyonu
+      const mealIdValidation = validateMealId(mealId);
+      if (!mealIdValidation.success) {
+        throw createError({
+          statusCode: 400,
+          message: 'Geçersiz öğün ID formatı',
+        });
+      }
+
+      // Update data validasyonu
+      const validation = validateUpdateMeal(updateData);
+      if (!validation.success) {
+        const firstError =
+          Object.values(validation.error._errors || {})[0]?.[0] ||
+          validation.error.message ||
+          'Geçersiz güncelleme verisi';
+        throw createError({
+          statusCode: 400,
+          message: firstError,
+        });
+      }
+
+      const validatedData = validation.data;
+
+      // Eğer foods array güncelleniyorsa, besinlerin veritabanında var olduğunu kontrol et
+      if (validatedData.foods && Array.isArray(validatedData.foods)) {
+        const foodPromises = validatedData.foods.map(async (food) => {
+          const existingFood = await Food.findById(food.foodId);
+          if (!existingFood) {
+            throw createError({
+              statusCode: 404,
+              message: `${food.foodId} ID'li besin bulunamadı`,
+            });
+          }
+          return food;
+        });
+        await Promise.all(foodPromises);
+      }
+
       // totalNutrients'i updateData'dan çıkar - pre-save hook hesaplayacak
-      const { totalNutrients, ...safeUpdateData } = updateData;
+      const { totalNutrients, ...safeUpdateData } = validatedData;
 
       // Find and update meal
       const meal = await Meal.findOneAndUpdate(
@@ -173,7 +246,17 @@ class MealService {
           message: 'Unauthorized',
         });
       }
+
       const mealId = event.context.params.id;
+
+      // Meal ID validasyonu
+      const mealIdValidation = validateMealId(mealId);
+      if (!mealIdValidation.success) {
+        throw createError({
+          statusCode: 400,
+          message: 'Geçersiz öğün ID formatı',
+        });
+      }
 
       // Find the meal to get the photoUrl before deleting
       const mealToDelete = await Meal.findOne({
@@ -254,7 +337,17 @@ class MealService {
           message: 'Unauthorized',
         });
       }
+
       const mealId = event.context.params.id;
+
+      // Meal ID validasyonu
+      const mealIdValidation = validateMealId(mealId);
+      if (!mealIdValidation.success) {
+        throw createError({
+          statusCode: 400,
+          message: 'Geçersiz öğün ID formatı',
+        });
+      }
 
       // Find meal
       const meal = await Meal.findOne({

@@ -164,17 +164,38 @@
                     v-model="mealForm.name"
                     type="text"
                     class="px-4 py-3 bg-white rounded-xl border transition-all text-lg font-medium text-gray-900"
-                    :class="`border-gray-200 focus:ring-2 focus:ring-${getMealTypeColor(
-                      mealForm.type
-                    ).replace(
-                      'bg-',
-                      ''
-                    )} focus:border-${getMealTypeColor(
-                      mealForm.type
-                    ).replace('bg-', '')}`"
+                    :class="[
+                      mealFormValidation.getError('name')
+                        ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                        : `border-gray-200 focus:ring-2 focus:ring-${getMealTypeColor(
+                            mealForm.type
+                          ).replace(
+                            'bg-',
+                            ''
+                          )} focus:border-${getMealTypeColor(
+                            mealForm.type
+                          ).replace('bg-', '')}`,
+                    ]"
                     placeholder="Öğün adı..."
-                    required
+                    @blur="validateMealForm"
+                    @input="
+                      mealFormValidation.clearErrors()
+                    "
                   />
+                  <!-- Validation Error -->
+                  <div
+                    v-if="
+                      mealFormValidation.getError('name')
+                    "
+                    class="mt-1 text-sm text-red-600 flex items-center"
+                  >
+                    <i
+                      class="fas fa-exclamation-circle mr-1"
+                    ></i>
+                    {{
+                      mealFormValidation.getError('name')
+                    }}
+                  </div>
                 </div>
 
                 <div class="flex gap-4 items-center">
@@ -192,16 +213,37 @@
                       v-model="mealForm.date"
                       type="datetime-local"
                       class="w-full px-4 py-3 bg-white rounded-xl border transition-all"
-                      :class="`border-gray-200 focus:ring-2 focus:ring-${getMealTypeColor(
-                        mealForm.type
-                      ).replace(
-                        'bg-',
-                        ''
-                      )} focus:border-${getMealTypeColor(
-                        mealForm.type
-                      ).replace('bg-', '')}`"
-                      required
+                      :class="[
+                        mealFormValidation.getError('date')
+                          ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                          : `border-gray-200 focus:ring-2 focus:ring-${getMealTypeColor(
+                              mealForm.type
+                            ).replace(
+                              'bg-',
+                              ''
+                            )} focus:border-${getMealTypeColor(
+                              mealForm.type
+                            ).replace('bg-', '')}`,
+                      ]"
+                      @blur="validateMealForm"
+                      @change="
+                        mealFormValidation.clearErrors()
+                      "
                     />
+                    <!-- Validation Error -->
+                    <div
+                      v-if="
+                        mealFormValidation.getError('date')
+                      "
+                      class="mt-1 text-sm text-red-600 flex items-center"
+                    >
+                      <i
+                        class="fas fa-exclamation-circle mr-1"
+                      ></i>
+                      {{
+                        mealFormValidation.getError('date')
+                      }}
+                    </div>
                   </div>
                 </div>
 
@@ -295,26 +337,57 @@
                       v-model="searchQuery"
                       type="text"
                       class="w-full pl-12 pr-4 py-4 bg-white rounded-xl border transition-all text-lg"
-                      :class="`border-gray-200 focus:ring-2 focus:ring-${getMealTypeColor(
-                        mealForm.type
-                      ).replace(
-                        'bg-',
-                        ''
-                      )} focus:border-${getMealTypeColor(
-                        mealForm.type
-                      ).replace('bg-', '')}`"
+                      :class="[
+                        searchValidation.getError(
+                          'searchQuery'
+                        )
+                          ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                          : `border-gray-200 focus:ring-2 focus:ring-${getMealTypeColor(
+                              mealForm.type
+                            ).replace(
+                              'bg-',
+                              ''
+                            )} focus:border-${getMealTypeColor(
+                              mealForm.type
+                            ).replace('bg-', '')}`,
+                      ]"
                       placeholder="Besin adı yazın..."
                       @input="debounceSearch"
+                      @blur="validateSearchQuery"
                     />
                     <div
                       class="absolute inset-y-0 left-0 flex items-center pl-4"
                     >
                       <i
                         class="fas fa-search text-lg"
-                        :class="`text-${getMealTypeColor(
-                          mealForm.type
-                        ).replace('bg-', '')}`"
+                        :class="[
+                          searchValidation.getError(
+                            'searchQuery'
+                          )
+                            ? 'text-red-500'
+                            : `text-${getMealTypeColor(
+                                mealForm.type
+                              ).replace('bg-', '')}`,
+                        ]"
                       ></i>
+                    </div>
+                    <!-- Validation Error -->
+                    <div
+                      v-if="
+                        searchValidation.getError(
+                          'searchQuery'
+                        )
+                      "
+                      class="absolute top-full left-0 right-0 mt-1 text-sm text-red-600 flex items-center bg-red-50 px-3 py-2 rounded-lg border border-red-200"
+                    >
+                      <i
+                        class="fas fa-exclamation-circle mr-1"
+                      ></i>
+                      {{
+                        searchValidation.getError(
+                          'searchQuery'
+                        )
+                      }}
                     </div>
                   </div>
 
@@ -481,7 +554,10 @@
                   selectedFoods.length === 0 ||
                   !mealForm.name ||
                   !mealForm.type ||
-                  !mealForm.date
+                  !mealForm.date ||
+                  !mealFormValidation.isValid ||
+                  !selectedFoodsValidation.isValid ||
+                  hasQuantityErrors
                 "
               >
                 <span
@@ -496,8 +572,94 @@
                 <span v-else class="flex items-center">
                   <i class="fas fa-check-circle mr-2"></i>
                   Öğünü Kaydet
+                  <!-- Validation Status Indicator -->
+                  <span
+                    v-if="
+                      !mealFormValidation.isValid ||
+                      !selectedFoodsValidation.isValid ||
+                      hasQuantityErrors
+                    "
+                    class="ml-2 text-red-200"
+                  >
+                    <i
+                      class="fas fa-exclamation-triangle text-sm"
+                    ></i>
+                  </span>
                 </span>
               </button>
+
+              <!-- Overall Validation Error Summary -->
+              <div
+                v-if="
+                  showValidationSummary &&
+                  (!mealFormValidation.isValid ||
+                    !selectedFoodsValidation.isValid ||
+                    hasQuantityErrors)
+                "
+                class="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl"
+              >
+                <div class="flex items-start">
+                  <i
+                    class="fas fa-exclamation-circle text-red-500 mt-0.5 mr-2"
+                  ></i>
+                  <div>
+                    <h4
+                      class="text-sm font-medium text-red-800 mb-2"
+                    >
+                      Lütfen aşağıdaki hataları düzeltin:
+                    </h4>
+                    <ul
+                      class="text-sm text-red-700 space-y-1"
+                    >
+                      <li
+                        v-if="
+                          mealFormValidation.getError(
+                            'name'
+                          )
+                        "
+                      >
+                        •
+                        {{
+                          mealFormValidation.getError(
+                            'name'
+                          )
+                        }}
+                      </li>
+                      <li
+                        v-if="
+                          mealFormValidation.getError(
+                            'date'
+                          )
+                        "
+                      >
+                        •
+                        {{
+                          mealFormValidation.getError(
+                            'date'
+                          )
+                        }}
+                      </li>
+                      <li
+                        v-if="
+                          selectedFoodsValidation.getError(
+                            ''
+                          )
+                        "
+                      >
+                        •
+                        {{
+                          selectedFoodsValidation.getError(
+                            ''
+                          )
+                        }}
+                      </li>
+                      <li v-if="hasQuantityErrors">
+                        • Besin miktarlarını kontrol edin
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
             </form>
           </div>
         </div>
@@ -657,13 +819,31 @@
                           v-model="food.quantity"
                           type="number"
                           min="1"
-                          class="w-full px-3 py-2 border border-gray-200 rounded-lg text-center focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+                          class="w-full px-3 py-2 border rounded-lg text-center transition-all"
+                          :class="[
+                            getQuantityError(food._id)
+                              ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                              : 'border-gray-200 focus:ring-2 focus:ring-green-500 focus:border-green-500',
+                          ]"
                           @input="updateTotalCalories"
+                          @blur="validateFoodQuantity(food)"
                         />
                         <span
-                          class="absolute right-3 top-1/2 transform -translate-y-1/2 text-green-500"
+                          class="absolute right-3 top-1/2 transform -translate-y-1/2"
+                          :class="[
+                            getQuantityError(food._id)
+                              ? 'text-red-500'
+                              : 'text-green-500',
+                          ]"
                           >g</span
                         >
+                        <!-- Quantity Validation Error -->
+                        <div
+                          v-if="getQuantityError(food._id)"
+                          class="absolute top-full left-0 right-0 mt-1 text-xs text-red-600 bg-red-50 px-2 py-1 rounded border border-red-200 z-10"
+                        >
+                          {{ getQuantityError(food._id) }}
+                        </div>
                       </div>
 
                       <button
@@ -972,8 +1152,31 @@ import Swal from 'sweetalert2';
 import { navigateTo } from '#app';
 import MealCard from '~/components/meal/MealCard.vue';
 
+// Validation imports
+import { useValidation } from '~/composables/useValidation';
+import {
+  mealFormSchema,
+  selectedFoodsSchema,
+  photoFileSchema,
+  completeMealSchema,
+  searchQuerySchema,
+  foodQuantitySchema,
+  backendMealSchema,
+} from '~/composables/mealValidationSchemas';
+
 const toast = useToast();
 const authStore = useAuthStore();
+
+// Validation setup
+const mealFormValidation = useValidation(mealFormSchema);
+const selectedFoodsValidation = useValidation(
+  selectedFoodsSchema
+);
+const photoValidation = useValidation(photoFileSchema);
+const searchValidation = useValidation(searchQuerySchema);
+const backendMealValidation = useValidation(
+  backendMealSchema
+);
 
 // Öğün tipleri tanımı
 const mealTypes = [
@@ -1023,6 +1226,80 @@ const filterEndDate = ref(
 const currentPage = ref(1);
 const itemsPerPage = ref(5);
 const isFiltering = ref(false);
+
+// Validation related reactive variables
+const showValidationSummary = ref(false);
+const quantityErrors = ref({});
+
+// Computed property for quantity validation errors
+const hasQuantityErrors = computed(() => {
+  return Object.keys(quantityErrors.value).length > 0;
+});
+
+// Validation methods
+const validateMealForm = () => {
+  const isValid = mealFormValidation.validate(
+    mealForm.value
+  );
+  if (!isValid) {
+    showValidationSummary.value = true;
+  }
+  return isValid;
+};
+
+const validateSelectedFoods = () => {
+  const isValid = selectedFoodsValidation.validate(
+    selectedFoods.value
+  );
+  if (!isValid) {
+    showValidationSummary.value = true;
+  }
+  return isValid;
+};
+
+const validateSearchQuery = () => {
+  if (!searchQuery.value.trim()) {
+    searchValidation.clearErrors();
+    return true;
+  }
+  return searchValidation.validate(searchQuery.value);
+};
+
+const validateFoodQuantity = food => {
+  try {
+    foodQuantitySchema.parse(Number(food.quantity));
+    // Clear error if validation passes
+    if (quantityErrors.value[food._id]) {
+      delete quantityErrors.value[food._id];
+      quantityErrors.value = { ...quantityErrors.value };
+    }
+    return true;
+  } catch (error) {
+    if (error.errors && error.errors[0]) {
+      quantityErrors.value = {
+        ...quantityErrors.value,
+        [food._id]: error.errors[0].message,
+      };
+    }
+    return false;
+  }
+};
+
+const getQuantityError = foodId => {
+  return quantityErrors.value[foodId];
+};
+
+const validateCompleteForm = () => {
+  const mealFormValid = validateMealForm();
+  const selectedFoodsValid = validateSelectedFoods();
+  const quantitiesValid = selectedFoods.value.every(food =>
+    validateFoodQuantity(food)
+  );
+
+  return (
+    mealFormValid && selectedFoodsValid && quantitiesValid
+  );
+};
 
 // Filtreleme ve sayfalama için computed değerler
 const filteredMeals = computed(() => {
@@ -1090,11 +1367,19 @@ const debounceSearch = useDebounceFn(async () => {
 
 const selectFood = food => {
   if (!selectedFoods.value.find(f => f._id === food._id)) {
-    selectedFoods.value.push({
+    const newFood = {
       ...food,
       quantity: 100,
-    });
+    };
+
+    selectedFoods.value.push(newFood);
     updateTotalCalories();
+
+    // Validate the newly added food quantity
+    validateFoodQuantity(newFood);
+
+    // Validate updated selected foods list
+    validateSelectedFoods();
 
     // Başarılı ekleme bildirimi
     toast.success(
@@ -1123,7 +1408,18 @@ const removeFood = food => {
   selectedFoods.value = selectedFoods.value.filter(
     f => f._id !== food._id
   );
+
+  // Clear validation error for removed food
+  if (quantityErrors.value[food._id]) {
+    delete quantityErrors.value[food._id];
+    quantityErrors.value = { ...quantityErrors.value };
+  }
+
   updateTotalCalories();
+
+  // Validate updated selected foods list
+  validateSelectedFoods();
+
   toast.info(`${food.name?.tr || food.name} çıkarıldı`, {
     icon: true,
     timeout: 2000,
@@ -1183,6 +1479,19 @@ const getMealTypeActiveClass = type => {
 };
 
 const createMeal = async () => {
+  // Clear previous validation summary
+  showValidationSummary.value = false;
+
+  // Comprehensive validation before submission
+  if (!validateCompleteForm()) {
+    showValidationSummary.value = true;
+    toast.error('Lütfen form hatalarını düzeltin', {
+      icon: true,
+      timeout: 3000,
+    });
+    return;
+  }
+
   if (selectedFoods.value.length === 0) {
     toast.warning('En az bir besin eklemelisiniz', {
       icon: true,
@@ -1195,7 +1504,7 @@ const createMeal = async () => {
   try {
     const headers = authStore.getAuthHeader();
 
-    // Önce öğünü oluştur
+    // Prepare meal data for backend
     const mealData = {
       name: mealForm.value.name || 'Yeni Öğün',
       type: mealForm.value.type,
@@ -1203,11 +1512,35 @@ const createMeal = async () => {
       foods: selectedFoods.value.map(food => ({
         foodId: food._id,
         quantity: {
-          value: parseInt(food.quantity || 100),
+          value: Number(food.quantity || 100),
           unit: 'g',
         },
       })),
     };
+
+    // Validate backend data format
+    const backendValidation =
+      backendMealValidation.validate(mealData);
+    if (!backendValidation) {
+      console.error(
+        'Backend validation errors:',
+        backendMealValidation.errors.value
+      );
+      toast.error(
+        'Veri formatı hatası. Lütfen tekrar deneyin.',
+        {
+          icon: true,
+          timeout: 3000,
+        }
+      );
+      isSubmitting.value = false;
+      return;
+    }
+
+    console.log(
+      'Sending meal data:',
+      JSON.stringify(mealData, null, 2)
+    );
 
     const response = await $fetch('/api/meals', {
       method: 'POST',
@@ -1280,6 +1613,14 @@ const createMeal = async () => {
       };
       selectedFoods.value = [];
       updateTotalCalories();
+
+      // Clear all validation states
+      mealFormValidation.clearErrors();
+      selectedFoodsValidation.clearErrors();
+      photoValidation.clearErrors();
+      searchValidation.clearErrors();
+      quantityErrors.value = {};
+      showValidationSummary.value = false;
 
       // Reset photo input explicitly
       if (photoInput.value) {
@@ -1579,6 +1920,44 @@ watch(
   [filterType, filterDate, filterStartDate, filterEndDate],
   () => {
     currentPage.value = 1;
+  }
+);
+
+// Validation watchers for real-time form validation
+watch(
+  () => mealForm.value.name,
+  () => {
+    if (mealForm.value.name) {
+      mealFormValidation.clearErrors();
+    }
+  }
+);
+
+watch(
+  () => mealForm.value.date,
+  () => {
+    if (mealForm.value.date) {
+      mealFormValidation.clearErrors();
+    }
+  }
+);
+
+watch(
+  () => selectedFoods.value.length,
+  () => {
+    if (selectedFoods.value.length > 0) {
+      selectedFoodsValidation.clearErrors();
+      showValidationSummary.value = false;
+    }
+  }
+);
+
+watch(
+  () => searchQuery.value,
+  () => {
+    if (searchQuery.value.length >= 2) {
+      searchValidation.clearErrors();
+    }
   }
 );
 
