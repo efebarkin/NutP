@@ -586,36 +586,15 @@ import { useAuthStore } from '~/stores/auth';
 import { useToast } from 'vue-toastification';
 import { navigateTo } from '#app';
 import { useForm, useField } from 'vee-validate';
-import * as yup from 'yup';
 import { useEmailVerification } from '~/composables/useEmailVerification';
+import { useAuthValidation } from '~/composables/useAuthValidation';
 
 const toast = useToast();
 const authStore = useAuthStore();
 
-// Yup validasyon şeması
-const validationSchema = yup.object({
-  email: yup
-    .string()
-    .required('Email gereklidir')
-    .email('Geçerli bir email adresi giriniz'),
-  password: yup
-    .string()
-    .required('Şifre gereklidir')
-    .min(8, 'Şifre en az 8 karakter olmalıdır')
-    .matches(
-      /[A-Z]/,
-      'Şifre en az bir büyük harf içermelidir'
-    )
-    .matches(
-      /[a-z]/,
-      'Şifre en az bir küçük harf içermelidir'
-    )
-    .matches(/[0-9]/, 'Şifre en az bir rakam içermelidir')
-    .matches(
-      /[@$!%*?&]/,
-      'Şifre en az bir özel karakter içermelidir'
-    ),
-});
+// Zod tabanlı validasyon şeması
+const { loginSchema: validationSchema } =
+  useAuthValidation();
 
 const { handleSubmit: validateAndSubmit, errors } = useForm(
   {
