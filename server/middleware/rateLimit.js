@@ -5,27 +5,27 @@ const rateLimitConfig = {
   // Kritik authentication endpoint'leri
   '/api/auth/login': {
     windowMs: 15 * 60 * 1000, // 15 dakika
-    maxRequests: 10, // 7 deneme
+    maxRequests: 100, // 7 deneme
     message: 'Çok fazla giriş denemesi. 15 dakika sonra tekrar deneyin.',
     blockDuration: 15 * 60 * 1000, // 15 dakika blok
   },
 
   '/api/auth/register': {
     windowMs: 15 * 60 * 1000, // 15 dakika
-    maxRequests: 10, // 3 kayıt
+    maxRequests: 100, // 3 kayıt
     message: 'Çok fazla kayıt denemesi. 15 dakika sonra tekrar deneyin.',
     blockDuration: 24 * 60 * 60 * 1000, // 24 saat blok
   },
 
   '/api/auth/verify-email': {
     windowMs: 5 * 60 * 1000, // 5 dakika
-    maxRequests: 3, // 3 deneme
+    maxRequests: 30, // 3 deneme
     message: 'Çok fazla doğrulama kodu talebi. 5 dakika sonra tekrar deneyin.',
   },
 
   '/api/auth/refresh': {
     windowMs: 1 * 60 * 1000, // 1 dakika
-    maxRequests: 10, // 10 refresh
+    maxRequests: 100, // 10 refresh
     message: 'Token yenileme limitine ulaştınız.',
   },
 
