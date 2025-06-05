@@ -1105,10 +1105,25 @@ const calculateCalories = () => {
 
   // Sayfayı sonuçlara doğru kaydır
   setTimeout(() => {
-    window.scrollTo({
-      top: 300,
-      behavior: 'smooth',
-    });
+    const isMobile = window.innerWidth < 768;
+    if (isMobile) {
+      // Mobilde results form'un altında yer alıyor, aşağıya scroll et
+      const resultsSection = document.querySelector(
+        '[v-if="results"]'
+      );
+      if (resultsSection) {
+        resultsSection.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }
+    } else {
+      // Desktop'ta biraz yukarıya scroll et
+      window.scrollTo({
+        top: 150,
+        behavior: 'smooth',
+      });
+    }
   }, 100);
 };
 
