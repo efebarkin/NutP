@@ -391,6 +391,178 @@ class WaterService {
       );
     }
   }
+
+  /**
+   * Kullanıcının belirli bir tarih aralığındaki günlük su tüketim özetlerini getirir.
+   * Takvim görünümü için kullanılır.
+   * @param {object} event - H3 event objesi
+   * @returns {Promise<object>} - Tarih aralığındaki günlük su tüketim özetleri
+   */
+  async getWaterEntriesByDateRange(event) {
+    const userIdFromAuth = event.context.auth?.user?._id;
+    if (!userIdFromAuth) {
+      throw createError(401, 'Yetkisiz erişim. Kullanıcı girişi yapılmamış.');
+    }
+
+    // Tarih aralığı parametrelerini al
+    const { startDate, endDate } = getQuery(event);
+
+    if (!startDate || !endDate) {
+      throw createError(
+        400,
+        'Başlangıç ve bitiş tarihleri gerekli. YYYY-MM-DD formatında gönderiniz.',
+      );
+    }
+
+    try {
+      // Import the dateRangeSchema
+      const { dateRangeSchema } = await import(
+        '../validations/waterValidation.js'
+      );
+
+      // Tarih aralığını valide et
+      const validatedDateRange = await dateRangeSchema.parseAsync({
+        startDate,
+        endDate,
+      });
+
+      // Tarih aralığının başlangıç ve bitiş tarihlerini oluştur
+      const startOfRange = new Date(
+        validatedDateRange.startDate + 'T00:00:00.000Z',
+      );
+      const endOfRange = new Date(
+        validatedDateRange.endDate + 'T23:59:59.999Z',
+      );
+
+      const userObjectId = new mongoose.Types.ObjectId(
+        userIdFromAuth.toString(),
+      );
+
+      // Belirtilen tarih aralığındaki tüm su kayıtlarını getir
+      const waterEntries = await Water.find({
+        userId: userObjectId,
+        consumedAt: {
+          $gte: startOfRange,
+          $lte: endOfRange,
+        },
+      })
+        .sort({ consumedAt: 1 })
+        .lean({ virtuals: true });
+
+      // Günlük özetleri oluştur
+      const dailySummaries = {};
+
+      // Önce tüm günleri başlat
+      const currentDate = new Date(startOfRange);
+      while (currentDate <= endOfRange) {
+        const dateKey = currentDate.toISOString().split('T')[0];
+        dailySummaries[dateKey] = {
+          date: dateKey,
+          totalWaterInML: 0,
+          totalWaterInLiters: 0,
+          totalWaterInGlasses: 0,
+          entryCount: 0,
+          dailyGoalML: 2500,
+          progressPercentage: 0,
+          isGoalReached: false,
+          entries: [],
+        };
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      // Su kayıtlarını günlere göre grupla ve hesapla
+      waterEntries.forEach((entry) => {
+        const entryDate = new Date(entry.consumedAt);
+        const entryDateKey = entryDate.toISOString().split('T')[0];
+
+        if (dailySummaries[entryDateKey]) {
+          const summary = dailySummaries[entryDateKey];
+
+          // Amount değerini manuel hesapla
+          let amountInML = 0;
+          if (entry.amount && entry.amount.value && entry.amount.unit) {
+            switch (entry.amount.unit) {
+              case 'ml':
+                amountInML = entry.amount.value;
+                break;
+              case 'l':
+                amountInML = entry.amount.value * 1000;
+                break;
+              case 'bardak':
+                amountInML = entry.amount.value * 200;
+                break;
+              default:
+                amountInML = 0;
+            }
+          }
+
+          summary.totalWaterInML += amountInML;
+          summary.totalWaterInLiters =
+            Math.round((summary.totalWaterInML / 1000) * 100) / 100;
+          summary.totalWaterInGlasses =
+            Math.round((summary.totalWaterInML / 200) * 10) / 10;
+          summary.entryCount += 1;
+          summary.progressPercentage = Math.min(
+            Math.round((summary.totalWaterInML / summary.dailyGoalML) * 100),
+            100,
+          );
+          summary.isGoalReached = summary.totalWaterInML >= summary.dailyGoalML;
+          summary.entries.push(entry);
+        }
+      });
+
+      // Genel istatistikler
+      const totalDays = Object.keys(dailySummaries).length;
+      const daysWithEntries = Object.values(dailySummaries).filter(
+        (day) => day.entryCount > 0,
+      ).length;
+      const daysGoalReached = Object.values(dailySummaries).filter(
+        (day) => day.isGoalReached,
+      ).length;
+      const totalWaterInRange = Object.values(dailySummaries).reduce(
+        (sum, day) => sum + day.totalWaterInML,
+        0,
+      );
+      const averageDailyWater =
+        totalDays > 0 ? Math.round(totalWaterInRange / totalDays) : 0;
+
+      return {
+        dateRange: {
+          startDate: validatedDateRange.startDate,
+          endDate: validatedDateRange.endDate,
+          totalDays,
+        },
+        summary: {
+          daysWithEntries,
+          daysGoalReached,
+          totalWaterInML: Math.round(totalWaterInRange),
+          totalWaterInLiters:
+            Math.round((totalWaterInRange / 1000) * 100) / 100,
+          averageDailyWaterInML: averageDailyWater,
+          averageDailyWaterInLiters:
+            Math.round((averageDailyWater / 1000) * 100) / 100,
+          goalCompletionRate:
+            totalDays > 0 ? Math.round((daysGoalReached / totalDays) * 100) : 0,
+        },
+        dailySummaries: Object.values(dailySummaries).sort((a, b) =>
+          a.date.localeCompare(b.date),
+        ),
+      };
+    } catch (error) {
+      console.error('Error getting water entries by date range:', error);
+      if (error.name === 'ZodError') {
+        throw createError(400, 'Geçersiz tarih aralığı', {
+          issues: error.issues,
+        });
+      }
+      if (error.statusCode === 400) throw error;
+      throw createError(
+        500,
+        error.message ||
+          'Tarih aralığı su kayıtları getirilirken bir hata oluştu.',
+      );
+    }
+  }
 }
 
 // Singleton instance oluştur

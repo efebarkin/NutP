@@ -114,3 +114,34 @@ export const dateStringYYYYMMDDSchema = z
         'Geçersiz tarih. Lütfen geçerli bir gün girin (örn: 2023-12-31).',
     },
   );
+
+// Schema for validating date range for calendar view
+export const dateRangeSchema = z
+  .object({
+    startDate: dateStringYYYYMMDDSchema,
+    endDate: dateStringYYYYMMDDSchema,
+  })
+  .refine(
+    (data) => {
+      const start = new Date(data.startDate);
+      const end = new Date(data.endDate);
+      return start <= end;
+    },
+    {
+      message: 'Başlangıç tarihi bitiş tarihinden sonra olamaz.',
+      path: ['startDate'],
+    },
+  )
+  .refine(
+    (data) => {
+      const start = new Date(data.startDate);
+      const end = new Date(data.endDate);
+      const diffInMs = end.getTime() - start.getTime();
+      const diffInDays = Math.ceil(diffInMs / (1000 * 60 * 60 * 24));
+      return diffInDays <= 31; // Maximum 31 days range
+    },
+    {
+      message: 'Tarih aralığı maksimum 31 gün olabilir.',
+      path: ['endDate'],
+    },
+  );

@@ -152,6 +152,8 @@ export const verifyAccessToken = async (token, event = null) => {
         console.warn('Access token fingerprint mismatch.');
         return null;
       }
+    } else if (event && decoded.fingerprint) {
+      console.warn('Access token fingerprint check SKIPPED (development mode)');
     }
 
     const user = await User.findById(decoded.userId).select('-password');
@@ -441,12 +443,13 @@ export const getServerSession = async (event) => {
       return null;
     }
 
-    // Fingerprint check (if enabled in token)
+    // Fingerprint check (re-enabled for all environments)
     if (decoded.fingerprint) {
+      // Removed process.env.NODE_ENV === 'production'
       // Align with generateTokens: prioritize x-forwarded-for, then remoteAddress
       const clientIp =
         event.node.req.headers['x-forwarded-for'] ||
-        event.node.req.socket.remoteAddress; // .socket.remoteAddress should be equivalent to .connection.remoteAddress
+        event.node.req.connection.remoteAddress; // Changed from event.node.req.socket.remoteAddress
       const userAgent = event.node.req.headers['user-agent'];
       const currentFingerprint = `${clientIp}|${userAgent?.substring(0, 50)}`; // Ensure consistency with generation
 
@@ -463,7 +466,7 @@ export const getServerSession = async (event) => {
         });
         // Consider aggressive action: clear all auth cookies
         // clearAuthCookies(event);
-        return null;
+        // return null; // This was commented out, but createError will throw
       }
       console.log('[getServerSession] Fingerprint MATCHED.');
     }

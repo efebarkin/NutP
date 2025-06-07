@@ -2,6 +2,17 @@
   <div
     class="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100"
   >
+    <!-- Water Calendar - Top of Page -->
+    <div
+      class="w-full bg-white border-b border-gray-200 shadow-sm"
+    >
+      <div class="container mx-auto px-4 py-6">
+        <div class="max-w-6xl mx-auto">
+          <WaterCalendar />
+        </div>
+      </div>
+    </div>
+
     <!-- Minimal Profile Header -->
     <div
       class="bg-white border-b border-gray-200 shadow-sm"
@@ -982,6 +993,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { useAuthStore } from '~/stores/auth';
 import Water from '~/components/Water.vue';
+import WaterCalendar from '~/components/WaterCalendar.vue';
 import { useToast } from 'vue-toastification';
 import { useSocketClient } from '~/composables/useSocketClient';
 import { useRouter } from 'vue-router';
