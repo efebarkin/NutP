@@ -897,6 +897,9 @@
               </div>
             </div>
 
+            <!-- Water Tracking -->
+            <Water />
+
             <!-- Quick Actions -->
             <div
               class="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100 overflow-hidden"
@@ -961,46 +964,6 @@
                     </p>
                   </div>
                 </NuxtLink>
-
-                <NuxtLink
-                  to="/raporlar"
-                  class="flex items-center space-x-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-all duration-200 group"
-                >
-                  <div
-                    class="w-10 h-10 bg-gradient-to-br from-purple-100 to-purple-200 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300"
-                  >
-                    <i
-                      class="fas fa-chart-line text-purple-600"
-                    ></i>
-                  </div>
-                  <div>
-                    <p class="font-medium text-gray-800">
-                      Raporlar
-                    </p>
-                    <p class="text-sm text-gray-500">
-                      İlerlemenizi görün
-                    </p>
-                  </div>
-                </NuxtLink>
-
-                <NuxtLink
-                  to="/ayarlar"
-                  class="flex items-center space-x-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-all duration-200 group"
-                >
-                  <div
-                    class="w-10 h-10 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300"
-                  >
-                    <i class="fas fa-cog text-gray-600"></i>
-                  </div>
-                  <div>
-                    <p class="font-medium text-gray-800">
-                      Ayarlar
-                    </p>
-                    <p class="text-sm text-gray-500">
-                      Profil ve tercihler
-                    </p>
-                  </div>
-                </NuxtLink>
               </div>
             </div>
           </div>
@@ -1018,6 +981,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { useAuthStore } from '~/stores/auth';
+import Water from '~/components/Water.vue';
 import { useToast } from 'vue-toastification';
 import { useSocketClient } from '~/composables/useSocketClient';
 import { useRouter } from 'vue-router';

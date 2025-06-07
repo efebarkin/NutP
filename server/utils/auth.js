@@ -443,10 +443,10 @@ export const getServerSession = async (event) => {
 
     // Fingerprint check (if enabled in token)
     if (decoded.fingerprint) {
+      // Align with generateTokens: prioritize x-forwarded-for, then remoteAddress
       const clientIp =
-        getCookie(event, 'client_ip') ||
         event.node.req.headers['x-forwarded-for'] ||
-        event.node.req.socket.remoteAddress;
+        event.node.req.socket.remoteAddress; // .socket.remoteAddress should be equivalent to .connection.remoteAddress
       const userAgent = event.node.req.headers['user-agent'];
       const currentFingerprint = `${clientIp}|${userAgent?.substring(0, 50)}`; // Ensure consistency with generation
 
@@ -478,6 +478,7 @@ export const getServerSession = async (event) => {
         email: user.email,
         name: user.name,
         role: user.role,
+        dailyWaterGoalML: user.dailyWaterGoalML,
         lastLogin: user.lastLogin || new Date().toISOString(),
       },
     };

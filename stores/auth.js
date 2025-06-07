@@ -49,11 +49,11 @@ export const useAuthStore = defineStore('auth', {
           this.loadUserFromLocalStorage();
         }
 
+        // Setup global error handler for auth-related responses BEFORE checkSession
+        this.setupGlobalErrorHandler();
+
         // Check session with the server
         await this.checkSession();
-
-        // Setup global error handler for auth-related responses
-        this.setupGlobalErrorHandler();
       } catch (error) {
         console.error('Error initializing auth store:', error);
         this.error = error.message;
@@ -257,13 +257,31 @@ export const useAuthStore = defineStore('auth', {
         });
 
         // If /api/auth/refresh succeeds (2xx), new cookies should be set by the server.
+        console.log(
+          '[AuthStore] refreshToken: /api/auth/refresh responded 2xx. New cookies assumed to be set. Fetching new CSRF token.',
+        );
+        const newCsrfToken = await this.fetchCsrfToken();
+
+        if (!newCsrfToken) {
+          console.error(
+            '[AuthStore] refreshToken: Failed to fetch new CSRF token after refresh. Aborting.',
+          );
+          this.clearUser(); // Or handle as a more critical error
+          this.globalLogoutReason = {
+            message:
+              'Failed to secure session after token refresh. Please login again.',
+          };
+          return false;
+        }
+
         // Now, re-validate the session to get the user details with the new auth_token.
         console.log(
-          '[AuthStore] refreshToken: /api/auth/refresh responded 2xx. New cookies assumed to be set. Calling checkSession().',
+          '[AuthStore] refreshToken: New CSRF token fetched. Calling checkSession().',
         );
         await this.checkSession(); // This will fetch /api/auth/session and update user state
 
-        if (this.user) {
+        if (this.user && this.csrfToken) {
+          // Ensure both user and CSRF token are present
           console.log(
             '[AuthStore] refreshToken: Session re-validated successfully after refresh. User:',
             this.user._id,
@@ -560,6 +578,42 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
+    async updateWaterGoal(newGoalML) {
+      if (!this.user) {
+        console.error('Cannot update water goal, user not logged in.');
+        throw new Error('User not authenticated.');
+      }
+
+      try {
+        const response = await $fetch('/api/user/water-goal', {
+          method: 'PUT',
+          body: { dailyWaterGoalML: newGoalML },
+          headers: this.getAuthHeader(), // Assuming you have a method to get auth headers
+          credentials: 'include',
+        });
+
+        if (response && typeof response.dailyWaterGoalML === 'number') {
+          this.user.dailyWaterGoalML = response.dailyWaterGoalML;
+          // Optionally, save the updated user object to localStorage if you do that elsewhere
+          if (import.meta.client && localStorage.getItem('user')) {
+            localStorage.setItem('user', JSON.stringify(this.user));
+          }
+          return response.dailyWaterGoalML;
+        } else {
+          throw new Error(
+            'Invalid response from server when updating water goal.',
+          );
+        }
+      } catch (error) {
+        console.error(
+          'Error updating water goal:',
+          error.data?.message || error.message || error,
+        );
+        this.setError(error.data?.message || 'Failed to update water goal.');
+        throw error; // Re-throw to be handled by the caller UI
+      }
+    },
+
     clearUser() {
       // console.log('clearUser called, clearing all session data');
       // Restore original fetch if interceptor was installed
@@ -687,9 +741,14 @@ export const useAuthStore = defineStore('auth', {
             if (!isSpecificAuthPath) {
               console.warn(`[AuthStore] Global 401 detected on ${requestUrl}.`);
 
-              if (!this.user || !this.user._id) {
+              // Check if we have user context in store OR in localStorage (for initialization phase)
+              const hasUserInStore = this.user && this.user._id;
+              const hasUserInLocalStorage =
+                import.meta.client && localStorage.getItem('user');
+
+              if (!hasUserInStore && !hasUserInLocalStorage) {
                 console.warn(
-                  `[AuthStore] Global 401: No user context in store. Cannot attempt refresh. Proceeding to logout.`,
+                  `[AuthStore] Global 401: No user context in store or localStorage. Cannot attempt refresh. Proceeding to logout.`,
                 );
                 if (!this.globalLogoutReason) {
                   // Ensure logout reason is set
@@ -701,8 +760,21 @@ export const useAuthStore = defineStore('auth', {
                 return response; // Return original 401 response
               }
 
+              // If we have user in localStorage but not in store, try to load it first
+              if (
+                !hasUserInStore &&
+                hasUserInLocalStorage &&
+                !this.initialized
+              ) {
+                console.warn(
+                  `[AuthStore] Global 401: User in localStorage but not in store during initialization. Loading from localStorage.`,
+                );
+                this.loadUserFromLocalStorage();
+              }
+
+              const userIdForLog = this.user?._id || 'localStorage-user';
               console.warn(
-                `[AuthStore] Global 401: User context found (User ID: ${this.user._id}). Attempting token refresh.`,
+                `[AuthStore] Global 401: User context found (User ID: ${userIdForLog}). Attempting token refresh.`,
               );
               try {
                 const refreshSuccessful = await this.refreshToken();

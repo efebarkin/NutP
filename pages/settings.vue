@@ -39,6 +39,16 @@
             <PasswordChangeForm />
           </div>
         </div>
+
+        <!-- Günlük Su Hedefi Ayarları -->
+        <div class="bg-white rounded-lg shadow mb-6">
+          <div class="border-b px-6 py-4">
+            <h3 class="text-lg font-semibold">Günlük Su Hedefi</h3>
+          </div>
+          <div class="p-6">
+            <WaterGoalForm />
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -48,7 +58,8 @@
 import { computed, onMounted } from 'vue';
 import { useAuthStore } from '~/stores/auth';
 import PasswordChangeForm from '~/components/user/PasswordChangeForm.vue';
-import role from '~/middleware/role';
+import WaterGoalForm from '~/components/user/WaterGoalForm.vue'; // <-- Add this import
+// import roleMiddlewareFactory from '~/middleware/role';
 
 // Auth store
 const authStore = useAuthStore();
@@ -84,10 +95,10 @@ const formatDate = (dateString) => {
   });
 };
 
-definePageMeta({
-  middleware: role(['admin', 'user']),
-  layout: 'settings'
-});
+// definePageMeta({
+//   // middleware: roleMiddlewareFactory(['admin', 'user']),
+//   layout: 'settings'
+// });
 
 // Sayfa yüklenirken oturum durumunu kontrol et
 onMounted(async () => {

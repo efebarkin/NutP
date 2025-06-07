@@ -157,7 +157,11 @@ const userSchema = new mongoose.Schema({
   verificationCodeExpires: {
     type: Date,
     select: false
-  }
+  },
+  dailyWaterGoalML: {
+    type: Number,
+    default: 2500 // Default to 2500ml
+  },
 }, {
   timestamps: true
 });

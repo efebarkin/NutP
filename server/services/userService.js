@@ -589,6 +589,59 @@ class UserService {
     }
   }
   
+  /**
+   * Kullanıcının günlük su hedefini günceller
+   * @param {string} userId - Kullanıcı ID
+   * @param {number} dailyWaterGoalML - Yeni günlük su hedefi (ml cinsinden)
+   * @returns {Promise<Object>} - Güncellenmiş kullanıcı bilgisi (sadece su hedefi)
+   */
+  async updateUserWaterGoal(event) { // Changed signature
+    const userId = event.context.auth?.user?._id || event.context.auth?.user?.id;
+    if (!userId) {
+      throw createError({ statusCode: 401, statusMessage: 'Unauthorized - User ID not found in context (auth object missing or user missing in auth)' });
+    }
+
+    const body = await readBody(event);
+    const { dailyWaterGoalML } = body;
+
+    if (typeof dailyWaterGoalML !== 'number' || dailyWaterGoalML <= 0) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Geçersiz su hedefi. Pozitif bir sayı olmalıdır.',
+      });
+    }
+
+    // İsteğe bağlı: Makul bir üst limit ekleyin, örn. 15000ml (15L)
+    if (dailyWaterGoalML > 15000) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Su hedefi makul bir limiti aşıyor (örn. 15L).',
+      });
+    }
+
+    try {
+      const updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { $set: { dailyWaterGoalML: dailyWaterGoalML } },
+        { new: true, runValidators: true, select: 'dailyWaterGoalML' } // Sadece güncellenen alanı ve ID'yi döndür
+      );
+
+      if (!updatedUser) {
+        throw createError({ statusCode: 404, statusMessage: 'Kullanıcı bulunamadı' });
+      }
+
+      return {
+        dailyWaterGoalML: updatedUser.dailyWaterGoalML,
+      };
+    } catch (error) {
+      console.error('Su hedefi güncelleme hatası:', error);
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Su hedefi güncellenirken bir hata oluştu.',
+      });
+    }
+  }
+
   // Kullanıcıyı engelle
   async blockUser(userId, targetId) {
     try {
