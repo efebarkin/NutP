@@ -432,8 +432,17 @@ const loading = ref(false);
 const goalReachedNotifShown = ref(false);
 const waterEntries = ref([]);
 const selectedDate = ref(
-  new Date().toISOString().split('T')[0]
-); // Initialize with today
+  (() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(
+      2,
+      '0'
+    );
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  })()
+); // Initialize with today using local timezone
 
 // DEĞİŞİKLİK 1: customAmount başlangıç değeri null yapıldı.
 const customAmount = ref(null);
@@ -580,10 +589,13 @@ const fetchTodayWater = async (options = {}) => {
     if (!options.preserveGoalNotifStatus) {
       goalReachedNotifShown.value = false; // Reset for the new day/fetch unless preserving
     }
-
     const response = await $fetch('/api/water/daily', {
       method: 'GET',
-      query: { date: selectedDate.value },
+      query: {
+        date: selectedDate.value,
+        timezone:
+          Intl.DateTimeFormat().resolvedOptions().timeZone,
+      },
       credentials: 'include',
       headers: {
         'X-CSRF-Token': authStore.csrfToken,
@@ -700,7 +712,7 @@ const addWater = async (amount, unit) => {
           value: Number(amount),
           unit: unit,
         },
-        consumedAt: new Date().toISOString(),
+        // consumedAt removed - let backend use server's local time via Date.now default
       },
       credentials: 'include',
       headers: {

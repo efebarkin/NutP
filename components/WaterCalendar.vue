@@ -433,7 +433,14 @@ const toDate = computed(() => {
 
 // Computed properties for better calculations
 const today = computed(() => {
-  return new Date().toISOString().split('T')[0];
+  const todayDate = new Date();
+  const year = todayDate.getFullYear();
+  const month = String(todayDate.getMonth() + 1).padStart(
+    2,
+    '0'
+  );
+  const day = String(todayDate.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 });
 
 const currentMonth = computed(() => {
@@ -685,6 +692,8 @@ const fetchCalendarData = async (isMonthChange = false) => {
       query: {
         startDate,
         endDate,
+        timezone:
+          Intl.DateTimeFormat().resolvedOptions().timeZone,
       },
     });
 

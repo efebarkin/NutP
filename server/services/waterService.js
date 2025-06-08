@@ -288,6 +288,7 @@ class WaterService {
 
     // Tarih parametresini al (query parameter'dan)
     const date = getQuery(event)?.date;
+    const timezone = getQuery(event)?.timezone || 'UTC'; // Default to UTC if not provided
 
     if (!date) {
       throw createError(
@@ -300,9 +301,10 @@ class WaterService {
       // Tarih formatını valide et
       const validatedDate = await dateStringYYYYMMDDSchema.parseAsync(date);
 
-      // Günün başlangıç ve bitiş tarihlerini oluştur (kullanıcının yerel saatine göre)
-      const startOfDay = new Date(validatedDate + 'T00:00:00.000Z');
-      const endOfDay = new Date(validatedDate + 'T23:59:59.999Z');
+      // Kullanıcının lokal timezone'ına göre günün başlangıç ve bitiş tarihlerini oluştur
+      // T00:00:00 ile T23:59:59.999 arasındaki tüm kayıtları al (timezone suffix olmadan)
+      const startOfDay = new Date(validatedDate + 'T00:00:00');
+      const endOfDay = new Date(validatedDate + 'T23:59:59.999');
 
       const userObjectId = new mongoose.Types.ObjectId(
         userIdFromAuth.toString(),
@@ -405,7 +407,7 @@ class WaterService {
     }
 
     // Tarih aralığı parametrelerini al
-    const { startDate, endDate } = getQuery(event);
+    const { startDate, endDate, timezone } = getQuery(event);
 
     if (!startDate || !endDate) {
       throw createError(
@@ -426,13 +428,9 @@ class WaterService {
         endDate,
       });
 
-      // Tarih aralığının başlangıç ve bitiş tarihlerini oluştur
-      const startOfRange = new Date(
-        validatedDateRange.startDate + 'T00:00:00.000Z',
-      );
-      const endOfRange = new Date(
-        validatedDateRange.endDate + 'T23:59:59.999Z',
-      );
+      // Tarih aralığının başlangıç ve bitiş tarihlerini oluştur (local timezone)
+      const startOfRange = new Date(validatedDateRange.startDate + 'T00:00:00');
+      const endOfRange = new Date(validatedDateRange.endDate + 'T23:59:59.999');
 
       const userObjectId = new mongoose.Types.ObjectId(
         userIdFromAuth.toString(),
@@ -455,7 +453,12 @@ class WaterService {
       // Önce tüm günleri başlat
       const currentDate = new Date(startOfRange);
       while (currentDate <= endOfRange) {
-        const dateKey = currentDate.toISOString().split('T')[0];
+        // Use local date formatting instead of UTC
+        const year = currentDate.getFullYear();
+        const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+        const day = String(currentDate.getDate()).padStart(2, '0');
+        const dateKey = `${year}-${month}-${day}`;
+
         dailySummaries[dateKey] = {
           date: dateKey,
           totalWaterInML: 0,
@@ -473,7 +476,11 @@ class WaterService {
       // Su kayıtlarını günlere göre grupla ve hesapla
       waterEntries.forEach((entry) => {
         const entryDate = new Date(entry.consumedAt);
-        const entryDateKey = entryDate.toISOString().split('T')[0];
+        // Use local date formatting instead of UTC
+        const year = entryDate.getFullYear();
+        const month = String(entryDate.getMonth() + 1).padStart(2, '0');
+        const day = String(entryDate.getDate()).padStart(2, '0');
+        const entryDateKey = `${year}-${month}-${day}`;
 
         if (dailySummaries[entryDateKey]) {
           const summary = dailySummaries[entryDateKey];
