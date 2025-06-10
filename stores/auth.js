@@ -29,6 +29,24 @@ export const useAuthStore = defineStore('auth', {
     isInitialized: (state) => state.initialized,
     token: (state) => state.accessToken, // Add this for compatibility
     userId: (state) => state.user?._id ?? null,
+    isAdmin: (state) => {
+      if (!state.user) {
+        return false;
+      }
+
+      if (!state.user.role) {
+        return false;
+      }
+
+      // Role bir dizi veya string olabilir, her iki durumu da kontrol et
+      if (Array.isArray(state.user.role)) {
+        return state.user.role.includes('admin');
+      } else if (typeof state.user.role === 'string') {
+        return state.user.role === 'admin';
+      }
+
+      return false;
+    },
   },
 
   actions: {

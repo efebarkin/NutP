@@ -1,8 +1,15 @@
 <template>
   <div v-if="isAdmin" class="admin-button-container">
-    <NuxtLink to="/admin" class="admin-button" title="Admin Paneli" @click="navigateToAdmin">
+    <NuxtLink
+      to="/admin"
+      class="admin-button"
+      title="Admin Paneli"
+      @click="navigateToAdmin"
+    >
       <div class="admin-icon">
-        <span class="material-icons">admin_panel_settings</span>
+        <span class="material-icons"
+          >admin_panel_settings</span
+        >
       </div>
     </NuxtLink>
   </div>
@@ -17,36 +24,19 @@ const authStore = useAuthStore();
 const router = useRouter();
 
 // Admin paneline programatik olarak yönlendir
-const navigateToAdmin = (event) => {
+const navigateToAdmin = event => {
   event.preventDefault(); // Varsayılan davranışı engelle
-  
+
   // Admin rolü kontrolü
   if (isAdmin.value) {
     router.push('/admin');
   } else {
     console.error('Admin rolü yok, yönlendirme engellendi');
-  } 
+  }
 };
 
 const isAdmin = computed(() => {
-  if (!authStore.user) {
-    return false;
-  }
-  
-  if (!authStore.user.role) {
-    return false;
-  }
-  
-  // Role bir dizi veya string olabilir, her iki durumu da kontrol et
-  if (Array.isArray(authStore.user.role)) {
-    const hasAdminRole = authStore.user.role.includes('admin');
-    return hasAdminRole;
-  } else if (typeof authStore.user.role === 'string') {
-    const hasAdminRole = authStore.user.role === 'admin';
-    return hasAdminRole;
-  }
-  
-  return false;
+  return authStore.isAdmin;
 });
 </script>
 
@@ -105,7 +95,11 @@ const isAdmin = computed(() => {
   left: -50%;
   width: 200%;
   height: 200%;
-  background: conic-gradient(transparent, rgba(255, 255, 255, 0.8), transparent 30%);
+  background: conic-gradient(
+    transparent,
+    rgba(255, 255, 255, 0.8),
+    transparent 30%
+  );
   animation: rotate 2s linear infinite;
 }
 
