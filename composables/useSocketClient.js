@@ -41,21 +41,23 @@ export const useSocketClient = () => {
       }
 
       console.log('Socket token alınıyor, userId:', userId);
-      
+
       // Önce auth store'dan token'ı al
       const authStore = useAuthStore();
       let authToken = authStore.user?.token;
 
       if (!authToken) {
-        console.warn('Auth token bulunamadı, refresh token ile yenilemeyi dene');
-        
+        console.warn(
+          'Auth token bulunamadı, refresh token ile yenilemeyi dene',
+        );
+
         try {
           // Refresh token endpoint'ini çağır
           const refreshResponse = await fetch('/api/auth/refresh', {
             method: 'POST',
             credentials: 'include',
           });
-          
+
           if (refreshResponse.ok) {
             const refreshData = await refreshResponse.json();
             if (refreshData.user && refreshData.user.token) {
@@ -76,7 +78,7 @@ export const useSocketClient = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         },
         body: JSON.stringify({ userId }),
         credentials: 'include',
@@ -93,21 +95,23 @@ export const useSocketClient = () => {
           console.error('Socket token API yanıt verdi ama token yok');
         }
       } else if (response.status === 401) {
-        console.warn('Socket token alınırken 401 hatası, token yenilemeyi dene');
-        
+        console.warn(
+          'Socket token alınırken 401 hatası, token yenilemeyi dene',
+        );
+
         // Refresh token endpoint'ini çağır
         const refreshResponse = await fetch('/api/auth/refresh', {
           method: 'POST',
           credentials: 'include',
         });
-        
+
         if (refreshResponse.ok) {
           const refreshData = await refreshResponse.json();
           if (refreshData.user && refreshData.user.token) {
             // Auth store'u güncelle
             authStore.setUser(refreshData.user);
             console.log('Token yenilendi, socket token tekrar deneniyor');
-            
+
             // Yeniden socket token isteği yap
             return getSocketToken(userId);
           }
@@ -134,38 +138,42 @@ export const useSocketClient = () => {
         console.log('Zaten bağlantı kurulmaya çalışılıyor, işlem atlanıyor');
         return;
       }
-      
+
       if (connected.value && socket.value) {
         console.log('Zaten bağlı, yeniden bağlanma işlemi atlanıyor');
         return;
       }
-      
+
       // Kullanıcı kimliğini al
       const userId = authStore.userId;
       if (!userId) {
-        console.error('Kullanıcı kimliği bulunamadı, socket bağlantısı kurulamıyor');
+        console.error(
+          'Kullanıcı kimliği bulunamadı, socket bağlantısı kurulamıyor',
+        );
         return;
       }
-      
+
       console.log('Socket bağlantısı kuruluyor, userId:', userId);
-      
+
       // Auth token'ı al
       let token = null;
-      
+
       // Önce auth store'dan token'ı al
       if (authStore.user && authStore.user.token) {
         token = authStore.user.token;
-        console.log('Auth store\'dan token alındı');
+        console.log("Auth store'dan token alındı");
       } else {
-        console.warn('Auth store\'da token bulunamadı, socket token almayı dene');
+        console.warn(
+          "Auth store'da token bulunamadı, socket token almayı dene",
+        );
         token = await getSocketToken(userId);
       }
-      
+
       if (!token) {
         console.error('Token alınamadı, socket bağlantısı kurulamıyor');
         return;
       }
-      
+
       // Socket.io bağlantısı kur
       connectWithToken(userId, token);
     } catch (error) {
@@ -180,14 +188,14 @@ export const useSocketClient = () => {
       console.error('connectWithToken: userId ve token gerekli');
       return;
     }
-    
+
     try {
       // Zaten bağlanma işlemi devam ediyorsa işlemi atla
       if (globalConnecting) {
         console.log('Zaten bağlanma işlemi devam ediyor, işlem atlanıyor');
         return;
       }
-      
+
       // Zaten bağlıysa işlemi atla
       if (globalConnected && globalSocket) {
         console.log('Zaten bağlı, yeniden bağlanma işlemi atlanıyor');
@@ -195,19 +203,21 @@ export const useSocketClient = () => {
         connected.value = globalConnected;
         return;
       }
-      
+
       // Bağlanma durumunu güncelle
       globalConnecting = true;
       connecting.value = globalConnecting;
-      
+
       // Tarayıcının mevcut URL'sini kullan
-      const currentUrl = process.client ? window.location.origin : socketUrl;
-      
+      const currentUrl = import.meta.client
+        ? window.location.origin
+        : socketUrl;
+
       console.log('Socket.io bağlantısı kuruluyor...');
       console.log('Socket URL:', currentUrl);
       console.log('UserId:', userId);
       console.log('Token var mı:', token ? 'Evet' : 'Hayır');
-      
+
       // Mevcut socket varsa bağlantıyı kapat
       if (globalSocket) {
         console.log('Mevcut socket bağlantısı kapatılıyor...');
@@ -215,7 +225,7 @@ export const useSocketClient = () => {
         globalSocket = null;
         socket.value = null;
       }
-      
+
       // Socket.io bağlantısı oluştur
       globalSocket = io(currentUrl, {
         path: '/socket.io',
@@ -223,73 +233,81 @@ export const useSocketClient = () => {
         reconnection: false, // Manuel olarak yeniden bağlanma yapacağız
         auth: {
           token: token,
-          userId: userId
+          userId: userId,
         },
         query: {
           token: token,
-          userId: userId
-        }
+          userId: userId,
+        },
       });
-      
+
       socket.value = globalSocket;
-      
+
       // Bağlantı olaylarını dinle
       globalSocket.on('connect', () => {
-        console.log('Socket.io bağlantısı kuruldu, socket ID:', globalSocket.id);
+        console.log(
+          'Socket.io bağlantısı kuruldu, socket ID:',
+          globalSocket.id,
+        );
         globalConnected = true;
         connected.value = globalConnected;
         globalConnecting = false;
         connecting.value = globalConnecting;
         reconnectAttempts = 0; // Yeniden bağlanma sayacını sıfırla
-        
+
         // Kullanıcı durumu dinleyicilerini ayarla
         setupUserStatusListeners();
-        
+
         // Arkadaşlık olaylarını dinle
         setupFriendshipListeners();
-        
+
         // Bağlantı kuruldu olayını yayınla
         emitter.emit('socket:connected', { socketId: globalSocket.id });
       });
-      
+
       globalSocket.on('connect_error', (error) => {
         console.error('Socket.io bağlantı hatası:', error.message);
-        
+
         // Hata detaylarını logla
         if (error.data) {
           console.error('Bağlantı hatası detayları:', error.data);
         }
-        
+
         globalConnected = false;
         connected.value = globalConnected;
         globalConnecting = false;
         connecting.value = globalConnecting;
-        
+
         // Token hatası durumunda token yenilemeyi dene
-        if (error.message.includes('Authentication error') || error.message.includes('Token')) {
+        if (
+          error.message.includes('Authentication error') ||
+          error.message.includes('Token')
+        ) {
           console.log('Token hatası, token yenilemeyi dene...');
           refreshToken(userId);
         } else {
           // Diğer hatalar için yeniden bağlanmayı dene
           handleReconnect(userId);
         }
-        
+
         // Bağlantı hatası olayını yayınla
         emitter.emit('socket:connect_error', { error: error.message });
       });
-      
+
       globalSocket.on('disconnect', (reason) => {
         console.log('Socket.io bağlantısı kesildi, sebep:', reason);
         globalConnected = false;
         connected.value = globalConnected;
-        
+
         // Bağlantı kesildi olayını yayınla
         emitter.emit('socket:disconnected', { reason });
-        
+
         // Bağlantı kesilme sebebine göre işlem yap
         if (reason === 'io server disconnect') {
           // Sunucu tarafından bağlantı kesildi, yeniden bağlanmayı dene
-          console.log('Sunucu tarafından bağlantı kesildi, yeniden bağlanmayı dene...');
+          console.log(
+            'Sunucu tarafından bağlantı kesildi, yeniden bağlanmayı dene...',
+          );
           refreshToken(userId);
         } else if (reason === 'transport close' || reason === 'ping timeout') {
           // Ağ hatası, yeniden bağlanmayı dene
@@ -305,47 +323,51 @@ export const useSocketClient = () => {
       connecting.value = false;
     }
   };
-  
+
   // Yeniden bağlanma işlemi
   const handleReconnect = (userId) => {
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-      console.log(`Maksimum yeniden bağlanma denemesi (${MAX_RECONNECT_ATTEMPTS}) aşıldı`);
+      console.log(
+        `Maksimum yeniden bağlanma denemesi (${MAX_RECONNECT_ATTEMPTS}) aşıldı`,
+      );
       return;
     }
-    
+
     reconnectAttempts++;
     const delay = reconnectAttempts * 2000; // Her denemede artan gecikme
-    
-    console.log(`${reconnectAttempts}. yeniden bağlanma denemesi ${delay}ms sonra yapılacak`);
-    
+
+    console.log(
+      `${reconnectAttempts}. yeniden bağlanma denemesi ${delay}ms sonra yapılacak`,
+    );
+
     setTimeout(() => {
       connect();
     }, delay);
   };
-  
+
   // Token yenileme ve yeniden bağlanma
   const refreshToken = async (userId) => {
     if (!userId) {
       console.error('refreshToken: userId parametresi gerekli');
       return false;
     }
-    
+
     console.log('Token yenileniyor, userId:', userId);
-    
+
     try {
       // Refresh token endpoint'ini çağır
       const response = await fetch('/api/auth/refresh', {
         method: 'POST',
         credentials: 'include', // Cookie'leri de gönder
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         if (data.user && data.user.token) {
           // Auth store'u güncelle
           authStore.setUser(data.user);
           console.log('Token yenilendi, yeniden bağlanılıyor...');
-          
+
           // Yeni token ile bağlan
           connectWithToken(userId, data.user.token);
           return true;
@@ -354,7 +376,7 @@ export const useSocketClient = () => {
         }
       } else {
         console.error('Token yenileme hatası:', response.status);
-        
+
         // Socket token'ı almayı dene
         const socketToken = await getSocketToken(userId);
         if (socketToken) {
@@ -368,7 +390,7 @@ export const useSocketClient = () => {
     } catch (error) {
       console.error('Token yenileme sırasında hata:', error);
     }
-    
+
     // Yeniden bağlanma denemesi yap
     handleReconnect(userId);
     return false;
@@ -377,100 +399,100 @@ export const useSocketClient = () => {
   // Arkadaşlık olaylarını dinle
   const setupFriendshipListeners = () => {
     console.log('Arkadaşlık olayları dinleyicileri ayarlanıyor...');
-    
+
     if (!socket.value) {
       console.error('Socket bağlantısı yok, arkadaşlık olayları dinlenemiyor');
       return;
     }
-    
+
     // Önceki dinleyicileri temizle
     socket.value.off('friend_request_accepted');
     socket.value.off('friend_request_received');
     socket.value.off('friend_request_rejected');
     socket.value.off('friend_removed');
-    
+
     // Arkadaşlık isteği kabul edildiğinde
     socket.value.on('friend_request_accepted', (data) => {
       console.log('Socket: Arkadaşlık isteği kabul edildi olayı alındı:', data);
-      
+
       if (!data) {
         console.error('Geçersiz arkadaşlık isteği kabul edildi verisi:', data);
         return;
       }
-      
+
       // Veri yapısını kontrol et ve düzelt
       const eventData = {
         requestId: data.requestId,
-        friend: data.friend || {}
+        friend: data.friend || {},
       };
-      
+
       console.log('Emitter ile yayınlanacak veri:', eventData);
-      
+
       // Emitter ile olayı bildir
       emitter.emit('friendship:request_accepted', eventData);
     });
-    
+
     // Arkadaşlık isteği alındığında
     socket.value.on('friend_request_received', (data) => {
       console.log('Socket: Yeni arkadaşlık isteği alındı olayı:', data);
-      
+
       if (!data) {
         console.error('Geçersiz arkadaşlık isteği alındı verisi:', data);
         return;
       }
-      
+
       // Veri yapısını kontrol et ve düzelt
       const eventData = {
         requestId: data.requestId,
-        requester: data.requester || {}
+        requester: data.requester || {},
       };
-      
+
       console.log('Emitter ile yayınlanacak veri:', eventData);
-      
+
       // Emitter ile olayı bildir
       emitter.emit('friendship:request_received', eventData);
     });
-    
+
     // Arkadaşlık isteği reddedildiğinde
     socket.value.on('friend_request_rejected', (data) => {
       console.log('Socket: Arkadaşlık isteği reddedildi olayı:', data);
-      
+
       if (!data) {
         console.error('Geçersiz arkadaşlık isteği reddedildi verisi:', data);
         return;
       }
-      
+
       // Veri yapısını kontrol et ve düzelt
       const eventData = {
-        requestId: data.requestId
+        requestId: data.requestId,
       };
-      
+
       console.log('Emitter ile yayınlanacak veri:', eventData);
-      
+
       // Emitter ile olayı bildir
       emitter.emit('friendship:request_rejected', eventData);
     });
-    
+
     // Arkadaş kaldırıldığında
     socket.value.on('friend_removed', (data) => {
       console.log('Socket: Arkadaş kaldırıldı olayı:', data);
-      
+
       if (!data) {
         console.error('Geçersiz arkadaş kaldırıldı verisi:', data);
         return;
       }
-      
+
       // Veri yapısını kontrol et ve düzelt
       const eventData = {
-        friendId: data.friendId
+        friendId: data.friendId,
       };
-      
+
       console.log('Emitter ile yayınlanacak veri:', eventData);
-      
+
       // Emitter ile olayı bildir
       emitter.emit('friendship:friend_removed', eventData);
     });
-    
+
     console.log('Arkadaşlık olayları dinleyicileri ayarlandı');
   };
 
@@ -480,23 +502,23 @@ export const useSocketClient = () => {
       console.error('setupUserStatusListeners: Socket bağlantısı yok');
       return;
     }
-    
+
     // Önceki dinleyicileri temizle
     globalSocket.off('user:online');
     globalSocket.off('user:offline');
-    
+
     // Kullanıcı çevrimiçi olduğunda
     globalSocket.on('user:online', (data) => {
       console.log('Kullanıcı çevrimiçi:', data);
       emitter.emit('user:online', data);
     });
-    
+
     // Kullanıcı çevrimdışı olduğunda
     globalSocket.on('user:offline', (data) => {
       console.log('Kullanıcı çevrimdışı:', data);
       emitter.emit('user:offline', data);
     });
-    
+
     console.log('Kullanıcı durumu dinleyicileri ayarlandı');
   };
 
@@ -514,14 +536,18 @@ export const useSocketClient = () => {
       console.error('Socket.io bağlantı hatası:', error.message);
       globalConnected = false;
       connected.value = globalConnected;
-      
+
       // Bağlantı hatası token ile ilgiliyse
-      if (error.message.includes('Authentication error') || error.message.includes('Token')) {
+      if (
+        error.message.includes('Authentication error') ||
+        error.message.includes('Token')
+      ) {
         console.log('Token hatası nedeniyle yeniden token alınacak');
         // Token'ı yenilemeyi dene
-        const userId = authStore.userId || authStore.user?._id || authStore.user?.id;
+        const userId =
+          authStore.userId || authStore.user?._id || authStore.user?.id;
         if (userId) {
-          getSocketToken(userId).then(token => {
+          getSocketToken(userId).then((token) => {
             if (token) {
               // Yeni token ile bağlantıyı yeniden kur
               disconnectSocket();

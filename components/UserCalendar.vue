@@ -94,8 +94,130 @@
               Kalori Başarı
             </div>
           </div>
+
+          <!-- Cache Statistics (Development Only) -->
+          <div
+            v-if="showCacheDebug"
+            class="text-center border-l border-blue-400/30 pl-6"
+          >
+            <div class="text-lg font-bold">
+              {{ cacheStats.hitRate || '0.0' }}%
+            </div>
+            <div class="text-xs text-blue-100">
+              Cache Hit
+            </div>
+          </div>
+          <div v-if="showCacheDebug" class="text-center">
+            <div class="text-lg font-bold">
+              {{ cacheStats.cacheSize || 0 }}
+            </div>
+            <div class="text-xs text-blue-100">
+              Cache Size
+            </div>
+          </div>
         </div>
       </div>
+    </div>
+
+    <!-- Development Cache Debug Panel -->
+    <div
+      v-if="showCacheDebug"
+      class="bg-gray-50 border-b border-gray-200 px-6 py-3"
+    >
+      <details class="cursor-pointer">
+        <summary
+          class="text-sm font-medium text-gray-700 hover:text-gray-900"
+        >
+          🔧 Cache Debug Panel (Development Only)
+        </summary>
+        <div
+          class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-4 text-xs"
+        >
+          <div class="bg-white p-3 rounded-lg border">
+            <div class="font-semibold text-blue-600">
+              Hit Rate
+            </div>
+            <div class="text-2xl font-bold text-gray-900">
+              {{ cacheStats.hitRate || '0.0' }}%
+            </div>
+            <div class="text-gray-500">
+              {{ cacheStats.hits || 0 }} hits /
+              {{
+                (cacheStats.hits || 0) +
+                (cacheStats.misses || 0)
+              }}
+              total
+            </div>
+          </div>
+          <div class="bg-white p-3 rounded-lg border">
+            <div class="font-semibold text-green-600">
+              Memory Cache
+            </div>
+            <div class="text-2xl font-bold text-gray-900">
+              {{ cacheStats.cacheSize || 0 }}
+            </div>
+            <div class="text-gray-500">
+              entries in memory
+            </div>
+          </div>
+          <div class="bg-white p-3 rounded-lg border">
+            <div class="font-semibold text-purple-600">
+              Background Refresh
+            </div>
+            <div class="text-2xl font-bold text-gray-900">
+              {{
+                isBackgroundRefreshing ? 'Active' : 'Idle'
+              }}
+            </div>
+            <div class="text-gray-500">
+              {{
+                lastBackgroundRefresh
+                  ? 'Last: ' +
+                    new Date(
+                      lastBackgroundRefresh
+                    ).toLocaleTimeString()
+                  : 'Never'
+              }}
+            </div>
+          </div>
+          <div class="bg-white p-3 rounded-lg border">
+            <div class="font-semibold text-orange-600">
+              Storage
+            </div>
+            <div class="text-lg font-bold text-gray-900">
+              W:{{
+                cacheStats.persistentSizes?.water || 0
+              }}
+              / M:{{
+                cacheStats.persistentSizes?.meal || 0
+              }}
+            </div>
+            <div class="text-gray-500">
+              persistent entries
+            </div>
+          </div>
+        </div>
+        <div class="mt-3 flex space-x-2">
+          <button
+            @click="clearAllCache"
+            class="px-3 py-1 bg-red-100 text-red-700 rounded-md text-xs hover:bg-red-200 transition-colors"
+          >
+            Clear All Cache
+          </button>
+          <button
+            @click="fetchCalendarData(false, true)"
+            class="px-3 py-1 bg-blue-100 text-blue-700 rounded-md text-xs hover:bg-blue-200 transition-colors"
+          >
+            Force Refresh
+          </button>
+          <button
+            @click="logCacheStats"
+            class="px-3 py-1 bg-gray-100 text-gray-700 rounded-md text-xs hover:bg-gray-200 transition-colors"
+          >
+            Log Stats
+          </button>
+        </div>
+      </details>
     </div>
 
     <!-- Full Width Calendar Body -->
@@ -382,7 +504,7 @@
     <transition name="modal">
       <div
         v-if="selectedDayDetails"
-        class="fixed inset-0 bg-gradient-to-br from-emerald-900/80 via-teal-900/30 to-green-900/80 backdrop-blur-xl flex items-center justify-center z-50 p-4"
+        class="modal-backdrop fixed inset-0 bg-gradient-to-br from-slate-900/90 via-gray-900/70 to-black/85 backdrop-blur-xl flex items-center justify-center z-50 p-4"
         @click="closeDayDetails"
       >
         <div class="premium-modal-container" @click.stop>
@@ -586,7 +708,7 @@
                         selectedDayDetails.water
                           .isGoalReached
                           ? 'fas fa-check-circle'
-                          : 'fas fa-target'
+                          : 'fas fa-clock'
                       "
                     ></i>
                   </div>
@@ -781,7 +903,7 @@
                         selectedDayDetails.meals
                           .isGoalReached
                           ? 'fas fa-check-circle'
-                          : 'fas fa-target'
+                          : 'fas fa-clock'
                       "
                     ></i>
                   </div>
@@ -841,54 +963,129 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import {
+  ref,
+  computed,
+  onMounted,
+  watch,
+  onUnmounted,
+  shallowRef,
+  nextTick,
+} from 'vue';
+import { useDebounceFn } from '@vueuse/core';
 import { useAuthStore } from '~/stores/auth';
 import { useToast } from 'vue-toastification';
 
 const authStore = useAuthStore();
 const toast = useToast();
 
-// Reactive data
+// Client-side checks
+const isClient = computed(() => import.meta.client);
+const showCacheDebug = computed(() => {
+  if (!import.meta.client) return false;
+  const config = useRuntimeConfig();
+  return config.public?.NODE_ENV === 'development';
+});
+
+// Cache initialization for SSR compatibility
+let cache = null;
+let cacheStats = ref({
+  hitRate: 0,
+  cacheSize: 0,
+  hits: 0,
+  misses: 0,
+  persistentSizes: {},
+});
+
+// Initialize cache on client side
+onMounted(async () => {
+  if (import.meta.client && !cache) {
+    try {
+      const { useCalendarDataCache } = await import(
+        '~/composables/useCalendarCache'
+      );
+      cache = useCalendarDataCache();
+
+      // Update cache stats
+      if (cache) {
+        cacheStats.value = {
+          hitRate: cache.hitRate || 0,
+          cacheSize: cache.cacheSize || 0,
+          hits: cache.getStats?.()?.hits || 0,
+          misses: cache.getStats?.()?.misses || 0,
+          persistentSizes:
+            cache.getStats?.()?.persistentSizes || {},
+        };
+      }
+    } catch (error) {
+      console.warn(
+        '[Calendar] Failed to initialize cache:',
+        error
+      );
+    }
+  }
+});
+
+// Cache utility methods
+const clearAllCache = () => {
+  if (cache) {
+    cache.clearAll();
+    cacheStats.value = {
+      hitRate: 0,
+      cacheSize: 0,
+      hits: 0,
+      misses: 0,
+      persistentSizes: {},
+    };
+  }
+};
+
+const logCacheStats = () => {
+  if (cache) {
+    console.log('Cache Stats:', cache.getStats());
+  } else {
+    console.log('Cache Stats:', cacheStats.value);
+  }
+};
+
+const updateCacheStats = () => {
+  if (cache) {
+    cacheStats.value = {
+      hitRate: cache.hitRate || 0,
+      cacheSize: cache.cacheSize || 0,
+      hits: cache.getStats?.()?.hits || 0,
+      misses: cache.getStats?.()?.misses || 0,
+      persistentSizes:
+        cache.getStats?.()?.persistentSizes || {},
+    };
+  }
+};
+
+// Reactive data - using shallowRef for large objects for better performance
 const selectedDate = ref(new Date());
-const waterCalendarData = ref(null);
-const mealCalendarData = ref(null);
+const waterCalendarData = shallowRef(null);
+const mealCalendarData = shallowRef(null);
 const loading = ref(false);
-const monthLoading = ref(false); // Separate loading state for month navigation
+const monthLoading = ref(false);
 const error = ref(null);
 const selectedDayDetails = ref(null);
 
-// Calendar date range
-const fromDate = computed(() => {
-  const date = new Date(selectedDate.value);
-  date.setMonth(date.getMonth() - 1);
-  return date;
-});
+// Background refresh flags
+const isBackgroundRefreshing = ref(false);
+const lastBackgroundRefresh = ref(null);
 
-const toDate = computed(() => {
-  const date = new Date(selectedDate.value);
-  date.setMonth(date.getMonth() + 1);
-  return date;
-});
-
-// Computed properties for better calculations
+// Optimized computed properties with memoization
 const today = computed(() => {
-  const todayDate = new Date();
-  const year = todayDate.getFullYear();
-  const month = String(todayDate.getMonth() + 1).padStart(
-    2,
-    '0'
-  );
-  const day = String(todayDate.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return new Date().toISOString().split('T')[0];
 });
 
-const currentMonth = computed(() => {
-  return selectedDate.value.getMonth();
-});
-
-const currentYear = computed(() => {
-  return selectedDate.value.getFullYear();
-});
+// Memoized date computations
+const currentMonth = computed(() =>
+  selectedDate.value.getMonth()
+);
+const currentYear = computed(() =>
+  selectedDate.value.getFullYear()
+);
 
 const isCurrentMonth = computed(() => {
   const now = new Date();
@@ -1204,22 +1401,31 @@ const formatMealCount = count => {
   return `${count} öğün`;
 };
 
-const selectDay = day => {
+const selectDay = async day => {
   const dayData = getDayDataByDate(day.date);
   if (dayData.hasData) {
+    // First set the data
     selectedDayDetails.value = {
       water: dayData.water,
       meals: dayData.meals,
       day: day.day,
       date: day.date,
     };
+
+    // Wait for DOM update to ensure smooth transition
+    await nextTick();
   }
 };
 
-const fetchCalendarData = async (isMonthChange = false) => {
+const fetchCalendarData = async (
+  isMonthChange = false,
+  forceRefresh = false
+) => {
   console.log(
     '🔍 fetchCalendarData called. Current selectedDate:',
-    selectedDate.value?.toISOString()
+    selectedDate.value?.toISOString(),
+    'forceRefresh:',
+    forceRefresh
   );
 
   if (loading.value || monthLoading.value) {
@@ -1243,26 +1449,210 @@ const fetchCalendarData = async (isMonthChange = false) => {
 
   try {
     const year = selectedDate.value.getFullYear();
-    const month = selectedDate.value.getMonth();
+    const month = selectedDate.value.getMonth() + 1; // 1-indexed for cache keys
 
-    // Get first and last day of the month
+    console.log(`🔍 Fetching data for: ${year}/${month}`);
+
+    // Check cache first (unless force refresh)
+    if (!forceRefresh && import.meta.client) {
+      const cacheInstance = cache;
+      if (cacheInstance) {
+        const cachedWaterData =
+          cacheInstance.getWaterCalendar(year, month);
+        const cachedMealData =
+          cacheInstance.getMealCalendar(year, month);
+
+        if (cachedWaterData && cachedMealData) {
+          console.log(
+            `📦 Cache hit for ${year}/${month} - using cached data`
+          );
+          waterCalendarData.value = cachedWaterData;
+          mealCalendarData.value = cachedMealData;
+
+          // Start background refresh for fresh data (stale-while-revalidate)
+          nextTick(() => {
+            backgroundRefreshData(year, month);
+          });
+
+          return;
+        } else if (cachedWaterData || cachedMealData) {
+          console.log(
+            `📦 Partial cache hit for ${year}/${month}`
+          );
+          if (cachedWaterData)
+            waterCalendarData.value = cachedWaterData;
+          if (cachedMealData)
+            mealCalendarData.value = cachedMealData;
+        }
+      }
+    }
+
+    // Calculate date range for API calls
     const startDay = 1;
-    const lastDay = new Date(year, month + 1, 0).getDate();
+    const lastDay = new Date(year, month, 0).getDate(); // month is 1-indexed here
 
-    const startDate = `${year}-${String(month + 1).padStart(
+    const startDate = `${year}-${String(month).padStart(
       2,
       '0'
     )}-${String(startDay).padStart(2, '0')}`;
-    const endDate = `${year}-${String(month + 1).padStart(
+    const endDate = `${year}-${String(month).padStart(
       2,
       '0'
     )}-${String(lastDay).padStart(2, '0')}`;
 
     console.log(
-      `🔍 Fetching data for period: ${startDate} to ${endDate}`
+      `🌐 API fetch for period: ${startDate} to ${endDate}`
     );
 
-    // Fetch both water and meal data simultaneously
+    // Determine which data to fetch based on cache status
+    const promises = [];
+    const fetchTypes = [];
+    const cacheInstance = import.meta.client ? cache : null;
+
+    if (
+      !cacheInstance?.getWaterCalendar(year, month) ||
+      forceRefresh
+    ) {
+      promises.push(
+        $fetch('/api/water/range', {
+          credentials: 'include',
+          query: {
+            startDate,
+            endDate,
+            timezone:
+              Intl.DateTimeFormat().resolvedOptions()
+                .timeZone,
+          },
+        })
+      );
+      fetchTypes.push('water');
+    }
+
+    if (
+      !cacheInstance?.getMealCalendar(year, month) ||
+      forceRefresh
+    ) {
+      promises.push(
+        $fetch('/api/meals/range', {
+          credentials: 'include',
+          query: {
+            startDate,
+            endDate,
+            timezone:
+              Intl.DateTimeFormat().resolvedOptions()
+                .timeZone,
+          },
+        })
+      );
+      fetchTypes.push('meal');
+    }
+
+    // Fetch missing or force-refreshed data
+    if (promises.length > 0) {
+      const responses = await Promise.all(promises);
+
+      // Process responses and update cache
+      responses.forEach((response, index) => {
+        const type = fetchTypes[index];
+
+        if (type === 'water') {
+          console.log(
+            '🔍 Water calendar data response:',
+            response
+          );
+          waterCalendarData.value = response;
+          cacheInstance?.setWaterCalendar(
+            year,
+            month,
+            response
+          );
+        } else if (type === 'meal') {
+          console.log(
+            '🔍 Meal calendar data response:',
+            response
+          );
+          mealCalendarData.value = response;
+          cacheInstance?.setMealCalendar(
+            year,
+            month,
+            response
+          );
+        }
+      });
+    }
+
+    // Prefetch adjacent months for better UX
+    nextTick(() => {
+      prefetchAdjacentMonths(year, month);
+    });
+  } catch (err) {
+    console.error('❌ Calendar data fetch error:', err);
+    error.value =
+      err.statusMessage ||
+      'Takvim verileri yüklenirken bir hata oluştu';
+    toast.error(error.value);
+
+    // Try to fall back to cache even if expired
+    if (import.meta.client && cacheInstance) {
+      const cachedWaterData =
+        cacheInstance.getWaterCalendar(
+          selectedDate.value.getFullYear(),
+          selectedDate.value.getMonth() + 1
+        );
+      const cachedMealData = cacheInstance.getMealCalendar(
+        selectedDate.value.getFullYear(),
+        selectedDate.value.getMonth() + 1
+      );
+
+      if (cachedWaterData || cachedMealData) {
+        console.log(
+          '📦 Falling back to cached data due to error'
+        );
+        if (cachedWaterData)
+          waterCalendarData.value = cachedWaterData;
+        if (cachedMealData)
+          mealCalendarData.value = cachedMealData;
+        toast.info(
+          'Önbelleğe alınmış veriler gösteriliyor'
+        );
+      }
+    }
+  } finally {
+    loading.value = false;
+    monthLoading.value = false;
+  }
+};
+
+// Background refresh for stale-while-revalidate strategy
+const backgroundRefreshData = async (year, month) => {
+  if (isBackgroundRefreshing.value) return;
+
+  // Don't refresh too frequently
+  const lastRefresh = lastBackgroundRefresh.value;
+  if (lastRefresh && Date.now() - lastRefresh < 60000) {
+    // 1 minute minimum
+    return;
+  }
+
+  isBackgroundRefreshing.value = true;
+  lastBackgroundRefresh.value = Date.now();
+
+  try {
+    console.log(
+      `🔄 Background refresh started for ${year}/${month}`
+    );
+
+    const startDay = 1;
+    const lastDay = new Date(year, month, 0).getDate();
+    const startDate = `${year}-${String(month).padStart(
+      2,
+      '0'
+    )}-${String(startDay).padStart(2, '0')}`;
+    const endDate = `${year}-${String(month).padStart(
+      2,
+      '0'
+    )}-${String(lastDay).padStart(2, '0')}`;
+
     const [waterResponse, mealResponse] = await Promise.all(
       [
         $fetch('/api/water/range', {
@@ -1288,28 +1678,241 @@ const fetchCalendarData = async (isMonthChange = false) => {
       ]
     );
 
-    console.log(
-      '🔍 Water calendar data response:',
-      waterResponse
-    );
-    console.log(
-      '🔍 Meal calendar data response:',
-      mealResponse
-    );
+    // Update cache with fresh data
+    const cacheInstance = import.meta.client ? cache : null;
+    if (cacheInstance) {
+      cacheInstance.setWaterCalendar(
+        year,
+        month,
+        waterResponse
+      );
+      cacheInstance.setMealCalendar(
+        year,
+        month,
+        mealResponse
+      );
+    }
 
-    waterCalendarData.value = waterResponse;
-    mealCalendarData.value = mealResponse;
-  } catch (err) {
-    console.error('❌ Calendar data fetch error:', err);
-    error.value =
-      err.statusMessage ||
-      'Takvim verileri yüklenirken bir hata oluştu';
-    toast.error(error.value);
+    // Update UI if this is the current month
+    const currentYear = selectedDate.value.getFullYear();
+    const currentMonth = selectedDate.value.getMonth() + 1;
+
+    if (year === currentYear && month === currentMonth) {
+      waterCalendarData.value = waterResponse;
+      mealCalendarData.value = mealResponse;
+      console.log(
+        `✅ Background refresh completed and UI updated for ${year}/${month}`
+      );
+    } else {
+      console.log(
+        `✅ Background refresh completed for ${year}/${month} (cached only)`
+      );
+    }
+  } catch (error) {
+    console.error(
+      `❌ Background refresh failed for ${year}/${month}:`,
+      error
+    );
   } finally {
-    loading.value = false;
-    monthLoading.value = false;
+    isBackgroundRefreshing.value = false;
   }
 };
+
+// Prefetch adjacent months for better navigation experience
+const prefetchAdjacentMonths = async (
+  currentYear,
+  currentMonth
+) => {
+  if (!import.meta.client) return;
+
+  try {
+    const cacheInstance = cache;
+    if (!cacheInstance) return;
+
+    // Calculate adjacent months
+    const nextMonth =
+      currentMonth === 12 ? 1 : currentMonth + 1;
+    const nextYear =
+      currentMonth === 12 ? currentYear + 1 : currentYear;
+    const prevMonth =
+      currentMonth === 1 ? 12 : currentMonth - 1;
+    const prevYear =
+      currentMonth === 1 ? currentYear - 1 : currentYear;
+
+    const prefetchPromises = [];
+
+    // Prefetch next month if not cached
+    if (
+      !cacheInstance.getWaterCalendar(
+        nextYear,
+        nextMonth
+      ) ||
+      !cacheInstance.getMealCalendar(nextYear, nextMonth)
+    ) {
+      console.log(
+        `🔮 Prefetching next month: ${nextYear}/${nextMonth}`
+      );
+
+      const nextStartDate = `${nextYear}-${String(
+        nextMonth
+      ).padStart(2, '0')}-01`;
+      const nextEndDate = `${nextYear}-${String(
+        nextMonth
+      ).padStart(2, '0')}-${String(
+        new Date(nextYear, nextMonth, 0).getDate()
+      ).padStart(2, '0')}`;
+
+      if (
+        !cacheInstance.getWaterCalendar(nextYear, nextMonth)
+      ) {
+        prefetchPromises.push(
+          $fetch('/api/water/range', {
+            credentials: 'include',
+            query: {
+              startDate: nextStartDate,
+              endDate: nextEndDate,
+              timezone:
+                Intl.DateTimeFormat().resolvedOptions()
+                  .timeZone,
+            },
+          }).then(data => ({
+            type: 'water',
+            year: nextYear,
+            month: nextMonth,
+            data,
+          }))
+        );
+      }
+
+      if (
+        !cacheInstance.getMealCalendar(nextYear, nextMonth)
+      ) {
+        prefetchPromises.push(
+          $fetch('/api/meals/range', {
+            credentials: 'include',
+            query: {
+              startDate: nextStartDate,
+              endDate: nextEndDate,
+              timezone:
+                Intl.DateTimeFormat().resolvedOptions()
+                  .timeZone,
+            },
+          }).then(data => ({
+            type: 'meal',
+            year: nextYear,
+            month: nextMonth,
+            data,
+          }))
+        );
+      }
+    }
+
+    // Prefetch previous month if not cached
+    if (
+      !cacheInstance.getWaterCalendar(
+        prevYear,
+        prevMonth
+      ) ||
+      !cacheInstance.getMealCalendar(prevYear, prevMonth)
+    ) {
+      console.log(
+        `🔮 Prefetching previous month: ${prevYear}/${prevMonth}`
+      );
+
+      const prevStartDate = `${prevYear}-${String(
+        prevMonth
+      ).padStart(2, '0')}-01`;
+      const prevEndDate = `${prevYear}-${String(
+        prevMonth
+      ).padStart(2, '0')}-${String(
+        new Date(prevYear, prevMonth, 0).getDate()
+      ).padStart(2, '0')}`;
+
+      if (
+        !cacheInstance.getWaterCalendar(prevYear, prevMonth)
+      ) {
+        prefetchPromises.push(
+          $fetch('/api/water/range', {
+            credentials: 'include',
+            query: {
+              startDate: prevStartDate,
+              endDate: prevEndDate,
+              timezone:
+                Intl.DateTimeFormat().resolvedOptions()
+                  .timeZone,
+            },
+          }).then(data => ({
+            type: 'water',
+            year: prevYear,
+            month: prevMonth,
+            data,
+          }))
+        );
+      }
+
+      if (
+        !cacheInstance.getMealCalendar(prevYear, prevMonth)
+      ) {
+        prefetchPromises.push(
+          $fetch('/api/meals/range', {
+            credentials: 'include',
+            query: {
+              startDate: prevStartDate,
+              endDate: prevEndDate,
+              timezone:
+                Intl.DateTimeFormat().resolvedOptions()
+                  .timeZone,
+            },
+          }).then(data => ({
+            type: 'meal',
+            year: prevYear,
+            month: prevMonth,
+            data,
+          }))
+        );
+      }
+    }
+
+    // Execute prefetch requests
+    if (prefetchPromises.length > 0) {
+      const results = await Promise.allSettled(
+        prefetchPromises
+      );
+
+      results.forEach(result => {
+        if (result.status === 'fulfilled') {
+          const { type, year, month, data } = result.value;
+          if (type === 'water') {
+            cacheInstance.setWaterCalendar(
+              year,
+              month,
+              data
+            );
+          } else if (type === 'meal') {
+            cacheInstance.setMealCalendar(
+              year,
+              month,
+              data
+            );
+          }
+          console.log(
+            `✅ Prefetched ${type} data for ${year}/${month}`
+          );
+        } else {
+          console.log(`❌ Prefetch failed:`, result.reason);
+        }
+      });
+    }
+  } catch (error) {
+    console.error('❌ Prefetch error:', error);
+  }
+};
+
+// VueUse debounced version for rapid navigation - optimized for Vue 3
+const debouncedFetchCalendarData = useDebounceFn(
+  fetchCalendarData,
+  300
+);
 
 const getProgressColor = percentage => {
   if (percentage >= 80) return 'text-green-500';
@@ -1470,15 +2073,19 @@ const handleCalendarMove = page => {
 
   selectedDate.value = newMonthFirstDay;
 
-  // Also trigger fetch directly as a backup
+  // Also trigger fetch directly as a backup with debouncing for better performance
   console.log(
-    '🚀 Triggering fetchCalendarData directly from handleCalendarMove'
+    '🚀 Triggering debouncedFetchCalendarData from handleCalendarMove'
   );
-  fetchCalendarData(true);
+  debouncedFetchCalendarData(true);
 };
 
-// Initial data fetch
+// Initial data fetch with cache initialization
 onMounted(() => {
+  console.log(
+    '📊 Calendar component mounted - initializing cache'
+  );
+
   if (authStore.isInitialized) {
     fetchCalendarData();
   } else {
@@ -1492,20 +2099,78 @@ onMounted(() => {
       }
     );
   }
+
+  // Log cache statistics on mount (client-side only)
+  if (import.meta.client) {
+    const cacheInstance = cache;
+    console.log(
+      '📊 Cache statistics on mount:',
+      cacheInstance?.getStats()
+    );
+  }
+});
+
+// Cleanup and cache management on unmount
+onUnmounted(() => {
+  // VueUse useDebounceFn automatically cancels pending calls on unmount
+  console.log(
+    'Calendar component unmounted - performing cleanup'
+  );
+
+  // Log final cache statistics (client-side only)
+  if (import.meta.client) {
+    const cacheInstance = cache;
+    console.log(
+      '📊 Final cache statistics:',
+      cacheInstance?.getStats()
+    );
+
+    // Perform cache cleanup
+    cacheInstance?.cleanup();
+  }
+
+  console.log('✅ Calendar component cleanup completed');
 });
 </script>
 
 <style scoped>
 /* Premium Modal Transition Styles */
+.modal-backdrop {
+  background: linear-gradient(
+    135deg,
+    rgba(15, 23, 42, 0.9) 0%,
+    rgba(17, 24, 39, 0.7) 50%,
+    rgba(0, 0, 0, 0.85) 100%
+  );
+  backdrop-filter: blur(12px);
+  transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+  will-change: backdrop-filter, background, opacity;
+}
+
 .modal-enter-active,
 .modal-leave-active {
-  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .modal-enter-from,
 .modal-leave-to {
   opacity: 0;
-  transform: scale(0.8) translateY(50px);
+}
+
+.modal-enter-from .modal-backdrop,
+.modal-leave-to .modal-backdrop {
+  backdrop-filter: blur(0px);
+  background: linear-gradient(
+    135deg,
+    rgba(15, 23, 42, 0) 0%,
+    rgba(17, 24, 39, 0) 50%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+.modal-enter-to,
+.modal-leave-from {
+  opacity: 1;
 }
 
 .modal-enter-active .premium-modal-container,
@@ -1515,8 +2180,14 @@ onMounted(() => {
 
 .modal-enter-from .premium-modal-container,
 .modal-leave-to .premium-modal-container {
-  transform: scale(0.8) translateY(50px) rotateX(10deg);
+  transform: scale(0.9) translateY(30px);
   opacity: 0;
+}
+
+.modal-enter-to .premium-modal-container,
+.modal-leave-from .premium-modal-container {
+  transform: scale(1) translateY(0);
+  opacity: 1;
 }
 
 /* Modern V-Calendar Styling */
@@ -2165,18 +2836,25 @@ onMounted(() => {
   max-width: 500px;
   max-height: 90vh;
   overflow: hidden;
-  animation: modalSlideIn 0.4s
-    cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: transform, opacity;
+  /* Animation removed to prevent conflict with Vue transitions */
 }
 
 .premium-modal-glass {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.15) 0%,
+    rgba(255, 255, 255, 0.08) 100%
+  );
+  backdrop-filter: blur(25px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 24px;
-  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25),
-    0 0 100px rgba(59, 130, 246, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  box-shadow: 0 32px 64px rgba(0, 0, 0, 0.4),
+    0 16px 32px rgba(0, 0, 0, 0.2),
+    0 0 120px rgba(59, 130, 246, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.1);
+  transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
   overflow: hidden;
   position: relative;
 }
@@ -2199,10 +2877,11 @@ onMounted(() => {
 .premium-modal-header {
   background: linear-gradient(
     135deg,
-    rgba(16, 185, 129, 0.9) 0%,
+    rgba(16, 185, 129, 0.95) 0%,
     rgba(5, 150, 105, 0.9) 50%,
-    rgba(6, 120, 86, 0.9) 100%
+    rgba(6, 120, 86, 0.95) 100%
   );
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   padding: 24px;
   display: flex;
   justify-content: space-between;
@@ -2276,6 +2955,7 @@ onMounted(() => {
 }
 
 .premium-modal-content {
+  background: rgba(255, 255, 255, 0.02);
   padding: 24px;
   max-height: calc(90vh - 120px);
   overflow-y: auto;

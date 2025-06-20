@@ -1079,7 +1079,7 @@ const initializeAuth = async () => {
   try {
     if (!authStore.isInitialized) {
       await authStore.initialize();
-    } else if (process.client) {
+    } else if (import.meta.client) {
       // Client-side user restoration from localStorage
       const userJson = localStorage.getItem('user');
       if (userJson && !authStore.authenticated) {

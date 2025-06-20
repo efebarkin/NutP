@@ -12,7 +12,7 @@ export default defineNuxtPlugin(async (nuxtApp) => {
   const authStore = useAuthStore();
 
   // Sayfa yüklendiğinde CSRF token'ı al
-  if (process.client) {
+  if (import.meta.client) {
     // Eğer token yoksa al
     if (!authStore.csrfToken) {
       try {
