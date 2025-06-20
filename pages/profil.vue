@@ -8,7 +8,7 @@
     >
       <div class="container mx-auto px-4 py-6">
         <div class="max-w-6xl mx-auto">
-          <WaterCalendar />
+          <UserCalendar />
         </div>
       </div>
     </div>
@@ -993,7 +993,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { useAuthStore } from '~/stores/auth';
 import Water from '~/components/Water.vue';
-import WaterCalendar from '~/components/WaterCalendar.vue';
+import UserCalendar from '~/components/UserCalendar.vue';
 import { useToast } from 'vue-toastification';
 import { useSocketClient } from '~/composables/useSocketClient';
 import { useRouter } from 'vue-router';

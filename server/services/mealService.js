@@ -1,9 +1,10 @@
 import { Meal } from '../models/Meal';
 import { Food } from '../models/Food';
+import User from '../models/User.js';
 import createError from 'http-errors';
 import { ErrorTypes } from '~/server/utils/error';
-import { readBody } from 'h3';
-import mealPhotoService from './mealPhotoService'; // Import mealPhotoService
+import { readBody, getQuery } from 'h3';
+import mealPhotoService from './mealPhotoService';
 import {
   validateCreateMeal,
   validateUpdateMeal,
@@ -13,19 +14,8 @@ import {
 class MealService {
   async createMeal(event) {
     try {
-      // Get authenticated user from context (provided by defineAuthenticatedHandler)
-      const user = event.context.auth?.user;
-      if (!user || !user._id) {
-        console.error(
-          '[MealService] User not authenticated or user ID missing:',
-          user,
-        );
-        throw createError({
-          statusCode: 401,
-          message:
-            'Unauthorized: User not authenticated or user ID is missing.',
-        });
-      }
+      // Auth middleware garantisi ile user her zaman mevcut
+      const user = event.context.auth.user;
 
       // Request body'den verileri al
       const body = await readBody(event);
@@ -129,13 +119,7 @@ class MealService {
   async getUserMeals(event) {
     try {
       // Get authenticated user from context (provided by defineAuthenticatedHandler)
-      const user = event.context.auth?.user;
-      if (!user) {
-        throw createError({
-          statusCode: 401,
-          message: 'Unauthorized',
-        });
-      }
+      const user = event.context.auth.user;
 
       // Find meals and populate food details
       const meals = await Meal.find({ userId: user._id })
@@ -158,13 +142,8 @@ class MealService {
 
   async updateMeal(event) {
     try {
-      const user = event.context.auth?.user;
-      if (!user) {
-        throw createError({
-          statusCode: 401,
-          message: 'Unauthorized',
-        });
-      }
+      // Auth middleware garantisi ile user her zaman mevcut
+      const user = event.context.auth.user;
 
       const mealId = event.context.params.id;
       const updateData = await readBody(event);
@@ -239,13 +218,8 @@ class MealService {
 
   async deleteMeal(event) {
     try {
-      const user = event.context.auth?.user;
-      if (!user) {
-        throw createError({
-          statusCode: 401,
-          message: 'Unauthorized',
-        });
-      }
+      // Auth middleware garantisi ile user her zaman mevcut
+      const user = event.context.auth.user;
 
       const mealId = event.context.params.id;
 
@@ -330,13 +304,8 @@ class MealService {
 
   async getMealById(event) {
     try {
-      const user = event.context.auth?.user;
-      if (!user) {
-        throw createError({
-          statusCode: 401,
-          message: 'Unauthorized',
-        });
-      }
+      // Auth middleware garantisi ile user her zaman mevcut
+      const user = event.context.auth.user;
 
       const mealId = event.context.params.id;
 
@@ -375,13 +344,8 @@ class MealService {
 
   async getRecentMeals(event) {
     try {
-      const user = event.context.auth?.user;
-      if (!user) {
-        throw createError({
-          statusCode: 401,
-          message: 'Unauthorized',
-        });
-      }
+      // Auth middleware garantisi ile user her zaman mevcut
+      const user = event.context.auth.user;
 
       const meals = await Meal.find({ userId: user._id })
         .select('+photoUrl') // Ensure photoUrl is selected
@@ -465,6 +429,348 @@ class MealService {
       throw createError({
         statusCode: 500,
         message: 'Error getting recent meals',
+      });
+    }
+  }
+
+  /**
+   * Kullanıcının belirli bir gündeki tüm öğün kayıtlarını getirir ve toplar.
+   * @param {object} event - H3 event objesi
+   * @returns {Promise<object>} - Günlük öğün özeti ve kayıtlar listesi
+   */
+  async getDailyMealEntries(event) {
+    try {
+      // Auth middleware garantisi ile user her zaman mevcut
+      const user = event.context.auth.user;
+
+      // Kullanıcının günlük kalori hedefini getir
+      const userProfile = await User.findById(user._id || user.id).select(
+        'dailyCalorieGoal',
+      );
+      const userCalorieGoal = userProfile?.dailyCalorieGoal || 2000;
+
+      // Tarih parametresini al (query parameter'dan)
+      const date = getQuery(event)?.date;
+      const timezone = getQuery(event)?.timezone || 'UTC';
+
+      if (!date) {
+        throw createError({
+          statusCode: 400,
+          message:
+            'Tarih parametresi gerekli. YYYY-MM-DD formatında gönderiniz.',
+        });
+      }
+
+      // Tarih formatını valide et
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(date)) {
+        throw createError({
+          statusCode: 400,
+          message: 'Geçersiz tarih formatı. YYYY-MM-DD formatında gönderiniz.',
+        });
+      }
+
+      // Kullanıcının lokal timezone'ına göre günün başlangıç ve bitiş tarihlerini oluştur
+      // T00:00:00 ile T23:59:59.999 arasındaki tüm kayıtları al (timezone suffix olmadan)
+      const startOfDay = new Date(date + 'T00:00:00');
+      const endOfDay = new Date(date + 'T23:59:59.999');
+
+      // Belirtilen tarih aralığındaki öğün kayıtlarını getir
+      const mealEntries = await Meal.find({
+        userId: user._id,
+        date: {
+          $gte: startOfDay,
+          $lte: endOfDay,
+        },
+      })
+        .select('+photoUrl')
+        .populate({
+          path: 'foods.foodId',
+          model: 'Food',
+          select: 'name nutrients category',
+        })
+        .sort({ date: 1 })
+        .lean();
+
+      // Toplam besin değerlerini hesapla
+      const totalNutrients = {
+        calories: 0,
+        protein: 0,
+        carbohydrate: 0,
+        fat: 0,
+      };
+
+      let totalMeals = mealEntries.length;
+      const mealsByType = {};
+
+      mealEntries.forEach((meal) => {
+        // Öğün tipine göre grupla
+        if (!mealsByType[meal.type]) {
+          mealsByType[meal.type] = [];
+        }
+        mealsByType[meal.type].push(meal);
+
+        // Toplam besin değerlerini ekle
+        if (meal.totalNutrients) {
+          totalNutrients.calories += meal.totalNutrients.calories || 0;
+          totalNutrients.protein += meal.totalNutrients.protein || 0;
+          totalNutrients.carbohydrate += meal.totalNutrients.carbohydrate || 0;
+          totalNutrients.fat += meal.totalNutrients.fat || 0;
+        }
+      });
+
+      // Günlük hedeflerle karşılaştırma (kalori hedefi kullanıcı bazlı, diğerleri standart)
+      const dailyGoals = {
+        calories: userCalorieGoal,
+        protein: 150,
+        carbohydrate: 250,
+        fat: 67,
+      };
+
+      // İlerleme yüzdelerini hesapla
+      const progressPercentages = {
+        calories: Math.min(
+          Math.round((totalNutrients.calories / dailyGoals.calories) * 100),
+          100,
+        ),
+        protein: Math.min(
+          Math.round((totalNutrients.protein / dailyGoals.protein) * 100),
+          100,
+        ),
+        carbohydrate: Math.min(
+          Math.round(
+            (totalNutrients.carbohydrate / dailyGoals.carbohydrate) * 100,
+          ),
+          100,
+        ),
+        fat: Math.min(
+          Math.round((totalNutrients.fat / dailyGoals.fat) * 100),
+          100,
+        ),
+      };
+
+      // Hedeflere ulaşıp ulaşmadığını kontrol et
+      const goalsReached = {
+        calories: totalNutrients.calories >= dailyGoals.calories,
+        protein: totalNutrients.protein >= dailyGoals.protein,
+        carbohydrate: totalNutrients.carbohydrate >= dailyGoals.carbohydrate,
+        fat: totalNutrients.fat >= dailyGoals.fat,
+      };
+
+      const overallProgress = Math.round(
+        (progressPercentages.calories +
+          progressPercentages.protein +
+          progressPercentages.carbohydrate +
+          progressPercentages.fat) /
+          4,
+      );
+
+      return {
+        date: date,
+        summary: {
+          totalMeals: totalMeals,
+          totalNutrients: {
+            calories: Math.round(totalNutrients.calories),
+            protein: Math.round(totalNutrients.protein * 10) / 10,
+            carbohydrate: Math.round(totalNutrients.carbohydrate * 10) / 10,
+            fat: Math.round(totalNutrients.fat * 10) / 10,
+          },
+          dailyGoals,
+          progressPercentages,
+          goalsReached,
+          overallProgress,
+          mealsByType: Object.keys(mealsByType).map((type) => ({
+            type,
+            count: mealsByType[type].length,
+            meals: mealsByType[type],
+          })),
+        },
+        entries: mealEntries,
+        dateRange: {
+          startOfDay: startOfDay.toISOString(),
+          endOfDay: endOfDay.toISOString(),
+        },
+      };
+    } catch (error) {
+      console.error('Error getting daily meal entries:', error);
+      if (error.statusCode === 400) throw error;
+      throw createError({
+        statusCode: error.statusCode || 500,
+        message:
+          error.message ||
+          'Günlük öğün kayıtları getirilirken bir hata oluştu.',
+      });
+    }
+  }
+
+  /**
+   * Kullanıcının belirli bir tarih aralığındaki günlük öğün özetlerini getirir.
+   * Takvim görünümü için kullanılır.
+   * @param {object} event - H3 event objesi
+   * @returns {Promise<object>} - Tarih aralığındaki günlük öğün özetleri
+   */
+  async getMealEntriesByDateRange(event) {
+    try {
+      // Auth middleware garantisi ile user her zaman mevcut
+      const user = event.context.auth.user;
+
+      // Kullanıcının günlük kalori hedefini getir
+      const userProfile = await User.findById(user._id || user.id).select(
+        'dailyCalorieGoal',
+      );
+      const userCalorieGoal = userProfile?.dailyCalorieGoal || 2000;
+
+      // Tarih aralığı parametrelerini al
+      const { startDate, endDate, timezone } = getQuery(event);
+
+      if (!startDate || !endDate) {
+        throw createError({
+          statusCode: 400,
+          message:
+            'Başlangıç ve bitiş tarihleri gerekli. YYYY-MM-DD formatında gönderiniz.',
+        });
+      }
+
+      // Basit tarih format validasyonu
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
+        throw createError({
+          statusCode: 400,
+          message: 'Geçersiz tarih formatı. YYYY-MM-DD formatında gönderiniz.',
+        });
+      }
+
+      // Kullanıcının lokal timezone'ına göre tarih aralığının başlangıç ve bitiş tarihlerini oluştur
+      // T00:00:00 ile T23:59:59.999 arasındaki tüm kayıtları al (timezone suffix olmadan)
+      const startOfRange = new Date(startDate + 'T00:00:00');
+      const endOfRange = new Date(endDate + 'T23:59:59.999');
+
+      // Belirtilen tarih aralığındaki tüm öğün kayıtlarını getir
+      const mealEntries = await Meal.find({
+        userId: user._id,
+        date: {
+          $gte: startOfRange,
+          $lte: endOfRange,
+        },
+      })
+        .select('+photoUrl')
+        .populate({
+          path: 'foods.foodId',
+          model: 'Food',
+          select: 'name nutrients category',
+        })
+        .sort({ date: 1 })
+        .lean();
+
+      // Günlük özetleri oluştur
+      const dailySummaries = {};
+
+      // Önce tüm günleri başlat
+      const currentDate = new Date(startOfRange);
+      while (currentDate <= endOfRange) {
+        const year = currentDate.getFullYear();
+        const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+        const day = String(currentDate.getDate()).padStart(2, '0');
+        const dateKey = `${year}-${month}-${day}`;
+
+        dailySummaries[dateKey] = {
+          date: dateKey,
+          totalMeals: 0,
+          totalCalories: 0,
+          totalProtein: 0,
+          totalCarbohydrate: 0,
+          totalFat: 0,
+          dailyGoalCalories: userCalorieGoal,
+          progressPercentage: 0,
+          isGoalReached: false,
+          mealsByType: {},
+          entries: [],
+        };
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      // Öğün kayıtlarını günlere göre grupla ve hesapla
+      mealEntries.forEach((meal) => {
+        const mealDate = new Date(meal.date);
+        const year = mealDate.getFullYear();
+        const month = String(mealDate.getMonth() + 1).padStart(2, '0');
+        const day = String(mealDate.getDate()).padStart(2, '0');
+        const mealDateKey = `${year}-${month}-${day}`;
+
+        if (dailySummaries[mealDateKey]) {
+          const summary = dailySummaries[mealDateKey];
+
+          // Öğün sayısını artır
+          summary.totalMeals += 1;
+
+          // Besin değerlerini ekle
+          if (meal.totalNutrients) {
+            summary.totalCalories += meal.totalNutrients.calories || 0;
+            summary.totalProtein += meal.totalNutrients.protein || 0;
+            summary.totalCarbohydrate += meal.totalNutrients.carbohydrate || 0;
+            summary.totalFat += meal.totalNutrients.fat || 0;
+          }
+
+          // Öğün tipine göre grupla
+          if (!summary.mealsByType[meal.type]) {
+            summary.mealsByType[meal.type] = 0;
+          }
+          summary.mealsByType[meal.type] += 1;
+
+          // İlerleme yüzdesini ve hedef durumunu güncelle
+          summary.progressPercentage = Math.min(
+            Math.round(
+              (summary.totalCalories / summary.dailyGoalCalories) * 100,
+            ),
+            100,
+          );
+          summary.isGoalReached =
+            summary.totalCalories >= summary.dailyGoalCalories;
+          summary.entries.push(meal);
+        }
+      });
+
+      // Genel istatistikler
+      const totalDays = Object.keys(dailySummaries).length;
+      const daysWithMeals = Object.values(dailySummaries).filter(
+        (day) => day.totalMeals > 0,
+      ).length;
+      const daysGoalReached = Object.values(dailySummaries).filter(
+        (day) => day.isGoalReached,
+      ).length;
+      const totalCaloriesInRange = Object.values(dailySummaries).reduce(
+        (sum, day) => sum + day.totalCalories,
+        0,
+      );
+      const averageDailyCalories =
+        totalDays > 0 ? Math.round(totalCaloriesInRange / totalDays) : 0;
+
+      return {
+        dateRange: {
+          startDate: startDate,
+          endDate: endDate,
+          totalDays,
+        },
+        summary: {
+          daysWithMeals,
+          daysGoalReached,
+          totalCaloriesInRange: Math.round(totalCaloriesInRange),
+          averageDailyCalories: averageDailyCalories,
+          goalCompletionRate:
+            totalDays > 0 ? Math.round((daysGoalReached / totalDays) * 100) : 0,
+        },
+        dailySummaries: Object.values(dailySummaries).sort((a, b) =>
+          a.date.localeCompare(b.date),
+        ),
+      };
+    } catch (error) {
+      console.error('Error getting meal entries by date range:', error);
+      if (error.statusCode === 400) throw error;
+      throw createError({
+        statusCode: error.statusCode || 500,
+        message:
+          error.message ||
+          'Tarih aralığı öğün kayıtları getirilirken bir hata oluştu.',
       });
     }
   }

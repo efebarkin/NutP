@@ -2,14 +2,14 @@
 import mongoose from 'mongoose';
 import createError from 'http-errors';
 import { Water } from '../models/Water';
-import { User } from '../models/User'; // User modelini de import edelim, userId kontrolü için gerekebilir.
+import User from '../models/User.js';
 import {
   createWaterValidationSchema,
   updateWaterValidationSchema,
   validateWaterId,
   dateStringYYYYMMDDSchema,
 } from '../validations/waterValidation';
-import { readBody, getQuery } from 'h3'; // Nitro yerine h3'ün readBody ve getQuery'sini kullanalım, Nuxt 3 server route'larında daha yaygın.
+import { readBody, getQuery } from 'h3';
 
 /**
  * Su tüketimi takibi ile ilgili servis fonksiyonları
@@ -21,10 +21,8 @@ class WaterService {
    * @returns {Promise<object>} - Oluşturulan su kaydı
    */
   async createWaterEntry(event) {
-    const userId = event.context.auth?.user?._id;
-    if (!userId) {
-      throw createError(401, 'Yetkisiz erişim. Kullanıcı girişi yapılmamış.');
-    }
+    // Auth middleware garantisi ile user her zaman mevcut
+    const userId = event.context.auth.user._id;
 
     const body = await readBody(event);
 
@@ -63,10 +61,8 @@ class WaterService {
    * @returns {Promise<Array>} - Su kayıtları listesi
    */
   async getWaterEntries(event) {
-    const userIdFromAuth = event.context.auth?.user?._id;
-    if (!userIdFromAuth) {
-      throw createError(401, 'Yetkisiz erişim. Kullanıcı girişi yapılmamış.');
-    }
+    // Auth middleware garantisi ile user her zaman mevcut
+    const userIdFromAuth = event.context.auth.user._id;
 
     try {
       const userObjectId = new mongoose.Types.ObjectId(
@@ -91,10 +87,8 @@ class WaterService {
    * @returns {Promise<object>} - Bulunan su kaydı
    */
   async getWaterEntryById(event) {
-    const userIdFromAuth = event.context.auth?.user?._id;
-    if (!userIdFromAuth) {
-      throw createError(401, 'Yetkisiz erişim. Kullanıcı girişi yapılmamış.');
-    }
+    // Auth middleware garantisi ile user her zaman mevcut
+    const userIdFromAuth = event.context.auth.user._id;
 
     const waterEntryId = event.context.params?.id;
     if (!waterEntryId) {
@@ -141,10 +135,8 @@ class WaterService {
    * @returns {Promise<object>} - Güncellenmiş su kaydı
    */
   async updateWaterEntry(event) {
-    const userIdFromAuth = event.context.auth?.user?._id;
-    if (!userIdFromAuth) {
-      throw createError(401, 'Yetkisiz erişim. Kullanıcı girişi yapılmamış.');
-    }
+    // Auth middleware garantisi ile user her zaman mevcut
+    const userIdFromAuth = event.context.auth.user._id;
 
     const waterEntryId = event.context.params?.id;
     if (!waterEntryId) {
@@ -221,10 +213,8 @@ class WaterService {
    * @returns {Promise<object>} - Silme işlemi sonucu
    */
   async deleteWaterEntry(event) {
-    const userIdFromAuth = event.context.auth?.user?._id;
-    if (!userIdFromAuth) {
-      throw createError(401, 'Yetkisiz erişim. Kullanıcı girişi yapılmamış.');
-    }
+    // Auth middleware garantisi ile user her zaman mevcut
+    const userIdFromAuth = event.context.auth.user._id;
 
     const waterEntryId = event.context.params?.id;
     if (!waterEntryId) {
@@ -281,10 +271,8 @@ class WaterService {
    * @returns {Promise<object>} - Günlük su tüketim özeti ve kayıtlar listesi
    */
   async getDailyWaterEntries(event) {
-    const userIdFromAuth = event.context.auth?.user?._id;
-    if (!userIdFromAuth) {
-      throw createError(401, 'Yetkisiz erişim. Kullanıcı girişi yapılmamış.');
-    }
+    // Auth middleware garantisi ile user her zaman mevcut
+    const userIdFromAuth = event.context.auth.user._id;
 
     // Tarih parametresini al (query parameter'dan)
     const date = getQuery(event)?.date;
@@ -401,10 +389,8 @@ class WaterService {
    * @returns {Promise<object>} - Tarih aralığındaki günlük su tüketim özetleri
    */
   async getWaterEntriesByDateRange(event) {
-    const userIdFromAuth = event.context.auth?.user?._id;
-    if (!userIdFromAuth) {
-      throw createError(401, 'Yetkisiz erişim. Kullanıcı girişi yapılmamış.');
-    }
+    // Auth middleware garantisi ile user her zaman mevcut
+    const userIdFromAuth = event.context.auth.user._id;
 
     // Tarih aralığı parametrelerini al
     const { startDate, endDate, timezone } = getQuery(event);

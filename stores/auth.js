@@ -633,6 +633,42 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
+    async updateCalorieGoal(newGoalKcal) {
+      if (!this.user) {
+        console.error('Cannot update calorie goal, user not logged in.');
+        throw new Error('User not authenticated.');
+      }
+
+      try {
+        const response = await $fetch('/api/user/calorie-goal', {
+          method: 'PUT',
+          body: { dailyCalorieGoal: newGoalKcal },
+          headers: this.getAuthHeader(),
+          credentials: 'include',
+        });
+
+        if (response && typeof response.dailyCalorieGoal === 'number') {
+          this.user.dailyCalorieGoal = response.dailyCalorieGoal;
+          // Optionally, save the updated user object to localStorage if you do that elsewhere
+          if (import.meta.client && localStorage.getItem('user')) {
+            localStorage.setItem('user', JSON.stringify(this.user));
+          }
+          return response.dailyCalorieGoal;
+        } else {
+          throw new Error(
+            'Invalid response from server when updating calorie goal.',
+          );
+        }
+      } catch (error) {
+        console.error(
+          'Error updating calorie goal:',
+          error.data?.message || error.message || error,
+        );
+        this.setError(error.data?.message || 'Failed to update calorie goal.');
+        throw error; // Re-throw to be handled by the caller UI
+      }
+    },
+
     clearUser() {
       // console.log('clearUser called, clearing all session data');
       // Restore original fetch if interceptor was installed

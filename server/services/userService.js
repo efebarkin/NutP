@@ -24,8 +24,7 @@ class UserService {
    */
   async getUserById(userId, withFriends = false) {
     try {
-
-      const user = await User.findById(userId).select('-password -__v').lean()
+      const user = await User.findById(userId).select('-password -__v').lean();
 
       if (!user) return null;
 
@@ -89,14 +88,14 @@ class UserService {
     try {
       const users = await User.find().select('-password -__v');
       return {
-        users: users
+        users: users,
       };
     } catch (error) {
       console.error('Kullanıcılar getirme hatası:', error);
       throw error;
     }
   }
-  
+
   /**
    * Kullanıcıları filtreleme
    * @param {Object} filters - Filtreleme kriterleri (role, status, dateFrom, dateTo)
@@ -107,46 +106,46 @@ class UserService {
     try {
       // Filtreleme koşullarını oluştur
       const filterConditions = {};
-      
+
       // Rol filtresi
       if (filters.role) {
         filterConditions.role = filters.role;
       }
-      
+
       // Durum filtresi (aktif/pasif)
       if (filters.status === 'active') {
         filterConditions.isActive = true;
       } else if (filters.status === 'inactive') {
         filterConditions.isActive = false;
       }
-      
+
       // Tarih aralığı filtresi
       if (filters.dateFrom || filters.dateTo) {
         filterConditions.createdAt = {};
-        
+
         if (filters.dateFrom) {
           filterConditions.createdAt.$gte = new Date(filters.dateFrom);
         }
-        
+
         if (filters.dateTo) {
           filterConditions.createdAt.$lte = new Date(filters.dateTo);
         }
       }
-      
+
       // Filtreleme sorgusunu çalıştır
       const users = await User.find(filterConditions)
         .select('-password -__v')
         .limit(limit);
-      
+
       return {
-        users: users
+        users: users,
       };
     } catch (error) {
       console.error('Kullanıcı filtreleme hatası:', error);
       throw new Error('Kullanıcılar filtrelenirken bir hata oluştu');
     }
   }
-  
+
   /**
    * Kullanıcıları hem arama hem filtreleme
    * @param {string} query - Arama sorgusu
@@ -159,7 +158,7 @@ class UserService {
       if (!query || query.length < 2) {
         throw new Error('Arama sorgusu en az 2 karakter olmalıdır');
       }
-      
+
       // Arama koşulları
       const searchConditions = {
         $or: [
@@ -167,54 +166,53 @@ class UserService {
           { email: { $regex: query, $options: 'i' } },
         ],
       };
-      
+
       // Filtreleme koşulları
       const filterConditions = {};
-      
+
       // Rol filtresi
       if (filters.role) {
         filterConditions.role = filters.role;
       }
-      
+
       // Durum filtresi
       if (filters.status === 'active') {
         filterConditions.isActive = true;
       } else if (filters.status === 'inactive') {
         filterConditions.isActive = false;
       }
-      
+
       // Tarih aralığı filtresi
       if (filters.dateFrom || filters.dateTo) {
         filterConditions.createdAt = {};
-        
+
         if (filters.dateFrom) {
           filterConditions.createdAt.$gte = new Date(filters.dateFrom);
         }
-        
+
         if (filters.dateTo) {
           filterConditions.createdAt.$lte = new Date(filters.dateTo);
         }
       }
-      
+
       // Arama ve filtreleme koşullarını birleştir
       const combinedConditions = {
-        $and: [
-          searchConditions,
-          filterConditions
-        ]
+        $and: [searchConditions, filterConditions],
       };
-      
+
       // Sorguyu çalıştır
       const users = await User.find(combinedConditions)
         .select('-password -__v')
         .limit(limit);
-      
+
       return {
-        users: users
+        users: users,
       };
     } catch (error) {
       console.error('Kullanıcı arama ve filtreleme hatası:', error);
-      throw new Error('Kullanıcılar aranırken ve filtrelenirken bir hata oluştu');
+      throw new Error(
+        'Kullanıcılar aranırken ve filtrelenirken bir hata oluştu',
+      );
     }
   }
 
@@ -249,14 +247,11 @@ class UserService {
           { email: { $regex: query, $options: 'i' } },
         ],
       };
-      
+
       // Eğer currentUserId belirtilmişse, o kullanıcıyı hariç tut
       if (currentUserId) {
         searchConditions = {
-          $and: [
-            { _id: { $ne: currentUserId } },
-            searchConditions
-          ]
+          $and: [{ _id: { $ne: currentUserId } }, searchConditions],
         };
       }
 
@@ -268,10 +263,10 @@ class UserService {
       // Admin paneli için kullanılıyorsa, tüm kullanıcıları döndür
       if (!currentUserId) {
         return {
-          users: users
+          users: users,
         };
       }
-      
+
       // Sosyal ağ özellikleri için arkadaşlık durumlarını kontrol et
       const friendships = await Friendship.find({
         $or: [
@@ -332,21 +327,21 @@ class UserService {
       if (userId === friendId) {
         throw new Error('Kendinizi arkadaş olarak ekleyemezsiniz');
       }
-      
+
       // Arkadaş olarak eklenecek kullanıcının varlığını kontrol et
       const friend = await User.findById(friendId).select('-password -__v');
       if (!friend) {
         throw new Error('Kullanıcı bulunamadı');
       }
-      
+
       // Arkadaşlık durumunu kontrol et
       let friendship = await Friendship.findOne({
         $or: [
           { requester: userId, recipient: friendId },
-          { requester: friendId, recipient: userId }
-        ]
+          { requester: friendId, recipient: userId },
+        ],
       });
-      
+
       if (friendship) {
         // Zaten bir arkadaşlık kaydı var
         if (friendship.status === 'accepted') {
@@ -358,17 +353,19 @@ class UserService {
           if (friendship.requester.toString() === friendId) {
             friendship.status = 'accepted';
             await friendship.save();
-            
+
             // Kullanıcıların friends listesini güncelle
-            await User.findByIdAndUpdate(userId, 
-              { $addToSet: { friends: friendId } });
-            await User.findByIdAndUpdate(friendId, 
-              { $addToSet: { friends: userId } });
-            
+            await User.findByIdAndUpdate(userId, {
+              $addToSet: { friends: friendId },
+            });
+            await User.findByIdAndUpdate(friendId, {
+              $addToSet: { friends: userId },
+            });
+
             // Önbelleği temizle
             await cacheFriends(userId, null);
             await cacheFriends(friendId, null);
-            
+
             return { ...friend.toObject(), status: friend.status || 'offline' };
           } else {
             throw new Error('Arkadaşlık isteği zaten gönderildi');
@@ -379,14 +376,15 @@ class UserService {
         friendship = new Friendship({
           requester: userId,
           recipient: friendId,
-          status: 'pending'
+          status: 'pending',
         });
         await friendship.save();
-        
+
         // Alıcının friendRequests listesine ekle
-        await User.findByIdAndUpdate(friendId, 
-          { $addToSet: { friendRequests: friendship._id } });
-        
+        await User.findByIdAndUpdate(friendId, {
+          $addToSet: { friendRequests: friendship._id },
+        });
+
         return { message: 'Arkadaşlık isteği gönderildi' };
       }
     } catch (error) {
@@ -407,28 +405,26 @@ class UserService {
       const friendship = await Friendship.findOne({
         $or: [
           { requester: userId, recipient: friendId },
-          { requester: friendId, recipient: userId }
-        ]
+          { requester: friendId, recipient: userId },
+        ],
       });
-      
+
       if (!friendship || friendship.status !== 'accepted') {
         throw new Error('Bu kullanıcı arkadaşınız değil');
       }
-      
+
       // Arkadaşlığı kaldır
       friendship.status = 'rejected';
       await friendship.save();
-      
+
       // Kullanıcıların friends listesinden çıkar
-      await User.findByIdAndUpdate(userId, 
-        { $pull: { friends: friendId } });
-      await User.findByIdAndUpdate(friendId, 
-        { $pull: { friends: userId } });
-      
+      await User.findByIdAndUpdate(userId, { $pull: { friends: friendId } });
+      await User.findByIdAndUpdate(friendId, { $pull: { friends: userId } });
+
       // Önbelleği temizle
       await cacheFriends(userId, null);
       await cacheFriends(friendId, null);
-      
+
       return true;
     } catch (error) {
       console.error('Arkadaşlıktan çıkarma hatası:', error);
@@ -454,7 +450,11 @@ class UserService {
       await setUserOnlineStatus(userId, status);
 
       const now = new Date();
-      await User.findByIdAndUpdate(userId, { status, lastActive: now, ...(status === 'offline' ? { lastSeen: now } : {}) })
+      await User.findByIdAndUpdate(userId, {
+        status,
+        lastActive: now,
+        ...(status === 'offline' ? { lastSeen: now } : {}),
+      });
 
       return true;
     } catch (error) {
@@ -487,7 +487,7 @@ class UserService {
         return [];
       }
 
-      // Arkadaş detaylarını getir      
+      // Arkadaş detaylarını getir
       const friends = await User.find({
         _id: { $in: user.friends.map((id) => new ObjectId(id)) },
       })
@@ -523,122 +523,72 @@ class UserService {
       // Gelen istekler
       const incomingRequests = await Friendship.find({
         recipient: userId,
-        status: 'pending'
+        status: 'pending',
       }).populate('requester', 'name email avatar status lastSeen');
-      
+
       // Giden istekler
       const outgoingRequests = await Friendship.find({
         requester: userId,
-        status: 'pending'
+        status: 'pending',
       }).populate('recipient', 'name email avatar status lastSeen');
-      
+
       return {
-        incoming: incomingRequests.map(fr => ({
+        incoming: incomingRequests.map((fr) => ({
           _id: fr._id,
           user: fr.requester,
-          createdAt: fr.createdAt
+          createdAt: fr.createdAt,
         })),
-        outgoing: outgoingRequests.map(fr => ({
+        outgoing: outgoingRequests.map((fr) => ({
           _id: fr._id,
           user: fr.recipient,
-          createdAt: fr.createdAt
-        }))
+          createdAt: fr.createdAt,
+        })),
       };
     } catch (error) {
       console.error('Arkadaşlık isteklerini getirme hatası:', error);
       throw error;
     }
   }
-  
+
   // Arkadaşlık isteğini kabul et
   async acceptFriendRequest(requestId, userId) {
     try {
       const request = await Friendship.findById(requestId);
-      
+
       if (!request) {
         throw new Error('Arkadaşlık isteği bulunamadı');
       }
-      
+
       if (request.recipient.toString() !== userId) {
         throw new Error('Bu isteği kabul etme yetkiniz yok');
       }
-      
+
       if (request.status !== 'pending') {
         throw new Error('Bu istek zaten işlendi');
       }
-      
+
       // İsteği kabul et
       request.status = 'accepted';
       await request.save();
-      
+
       // Kullanıcıların friends listesini güncelle
       const requesterId = request.requester;
-      await User.findByIdAndUpdate(userId, 
-        { $addToSet: { friends: requesterId }, $pull: { friendRequests: requestId } });
-      await User.findByIdAndUpdate(requesterId, 
-        { $addToSet: { friends: userId } });
-      
+      await User.findByIdAndUpdate(userId, {
+        $addToSet: { friends: requesterId },
+        $pull: { friendRequests: requestId },
+      });
+      await User.findByIdAndUpdate(requesterId, {
+        $addToSet: { friends: userId },
+      });
+
       // Önbelleği temizle
       await cacheFriends(userId, null);
       await cacheFriends(requesterId, null);
-      
+
       return true;
     } catch (error) {
       console.error('Arkadaşlık isteği kabul hatası:', error);
       throw error;
-    }
-  }
-  
-  /**
-   * Kullanıcının günlük su hedefini günceller
-   * @param {string} userId - Kullanıcı ID
-   * @param {number} dailyWaterGoalML - Yeni günlük su hedefi (ml cinsinden)
-   * @returns {Promise<Object>} - Güncellenmiş kullanıcı bilgisi (sadece su hedefi)
-   */
-  async updateUserWaterGoal(event) { // Changed signature
-    const userId = event.context.auth?.user?._id || event.context.auth?.user?.id;
-    if (!userId) {
-      throw createError({ statusCode: 401, statusMessage: 'Unauthorized - User ID not found in context (auth object missing or user missing in auth)' });
-    }
-
-    const body = await readBody(event);
-    const { dailyWaterGoalML } = body;
-
-    if (typeof dailyWaterGoalML !== 'number' || dailyWaterGoalML <= 0) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Geçersiz su hedefi. Pozitif bir sayı olmalıdır.',
-      });
-    }
-
-    // İsteğe bağlı: Makul bir üst limit ekleyin, örn. 15000ml (15L)
-    if (dailyWaterGoalML > 15000) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Su hedefi makul bir limiti aşıyor (örn. 15L).',
-      });
-    }
-
-    try {
-      const updatedUser = await User.findByIdAndUpdate(
-        userId,
-        { $set: { dailyWaterGoalML: dailyWaterGoalML } },
-        { new: true, runValidators: true, select: 'dailyWaterGoalML' } // Sadece güncellenen alanı ve ID'yi döndür
-      );
-
-      if (!updatedUser) {
-        throw createError({ statusCode: 404, statusMessage: 'Kullanıcı bulunamadı' });
-      }
-
-      return {
-        dailyWaterGoalML: updatedUser.dailyWaterGoalML,
-      };
-    } catch (error) {
-      console.error('Su hedefi güncelleme hatası:', error);
-      throw createError({
-        statusCode: 500,
-        statusMessage: 'Su hedefi güncellenirken bir hata oluştu.',
-      });
     }
   }
 
@@ -649,21 +599,23 @@ class UserService {
       let friendship = await Friendship.findOne({
         $or: [
           { requester: userId, recipient: targetId },
-          { requester: targetId, recipient: userId }
-        ]
+          { requester: targetId, recipient: userId },
+        ],
       });
-      
+
       if (friendship) {
         // Mevcut arkadaşlığı güncelle
         friendship.status = 'blocked';
         friendship.blockedBy = userId;
-        
+
         // Arkadaşlardan çıkar
         if (friendship.status === 'accepted') {
-          await User.findByIdAndUpdate(userId, 
-            { $pull: { friends: targetId } });
-          await User.findByIdAndUpdate(targetId, 
-            { $pull: { friends: userId } });
+          await User.findByIdAndUpdate(userId, {
+            $pull: { friends: targetId },
+          });
+          await User.findByIdAndUpdate(targetId, {
+            $pull: { friends: userId },
+          });
         }
       } else {
         // Yeni bir blok kaydı oluştur
@@ -671,24 +623,134 @@ class UserService {
           requester: userId,
           recipient: targetId,
           status: 'blocked',
-          blockedBy: userId
+          blockedBy: userId,
         });
       }
-      
+
       await friendship.save();
-      
+
       // Önbelleği temizle
       await cacheFriends(userId, null);
       await cacheFriends(targetId, null);
-      
+
       return true;
     } catch (error) {
       console.error('Kullanıcı engelleme hatası:', error);
       throw error;
     }
   }
-}
 
+  /**
+   * Update user's daily water goal
+   * @param {Object} event - Nuxt event object
+   * @returns {Promise<Object>} - Updated user with new water goal
+   */
+  async updateUserWaterGoal(event) {
+    try {
+      // Auth middleware garantisi ile user her zaman mevcut
+      const user = event.context.auth.user;
+
+      const body = await readBody(event);
+      const { dailyWaterGoalML } = body;
+
+      // Validation
+      if (!dailyWaterGoalML || typeof dailyWaterGoalML !== 'number') {
+        throw createError({
+          statusCode: 400,
+          statusMessage: 'Daily water goal must be a valid number',
+        });
+      }
+
+      if (dailyWaterGoalML < 500 || dailyWaterGoalML > 10000) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: 'Daily water goal must be between 500ml and 10000ml',
+        });
+      }
+
+      // Update user
+      const updatedUser = await User.findByIdAndUpdate(
+        user._id || user.id,
+        { dailyWaterGoalML },
+        { new: true, select: 'dailyWaterGoalML' },
+      );
+
+      if (!updatedUser) {
+        throw createError({
+          statusCode: 404,
+          statusMessage: 'User not found',
+        });
+      }
+
+      return updatedUser;
+    } catch (error) {
+      if (error.statusCode) {
+        throw error;
+      }
+      console.error('Error updating water goal:', error);
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Failed to update water goal',
+      });
+    }
+  }
+
+  /**
+   * Update user's daily calorie goal
+   * @param {Object} event - Nuxt event object
+   * @returns {Promise<Object>} - Updated user with new calorie goal
+   */
+  async updateUserCalorieGoal(event) {
+    try {
+      // Auth middleware garantisi ile user her zaman mevcut
+      const user = event.context.auth.user;
+
+      const body = await readBody(event);
+      const { dailyCalorieGoal } = body;
+
+      // Validation
+      if (!dailyCalorieGoal || typeof dailyCalorieGoal !== 'number') {
+        throw createError({
+          statusCode: 400,
+          statusMessage: 'Daily calorie goal must be a valid number',
+        });
+      }
+
+      if (dailyCalorieGoal < 800 || dailyCalorieGoal > 5000) {
+        throw createError({
+          statusCode: 400,
+          statusMessage:
+            'Daily calorie goal must be between 800 and 5000 calories',
+        });
+      }
+
+      // Update user
+      const updatedUser = await User.findByIdAndUpdate(
+        user._id || user.id,
+        { dailyCalorieGoal },
+        { new: true, select: 'dailyCalorieGoal' },
+      );
+
+      if (!updatedUser) {
+        throw createError({
+          statusCode: 404,
+          statusMessage: 'User not found',
+        });
+      }
+
+      return updatedUser;
+    } catch (error) {
+      if (error.statusCode) {
+        throw error;
+      }
+      console.error('Error updating calorie goal:', error);
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Failed to update calorie goal',
+      });
+    }
+  }
+}
 
 // Singleton instance
 const userService = new UserService();
